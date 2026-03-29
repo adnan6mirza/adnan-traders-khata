@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adnan Traders — Khata Book</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+:root{
+  --green:#15803d;--green-bg:#dcfce7;--green-light:#f0fdf4;
+  --blue:#1d4ed8;--blue-bg:#dbeafe;--blue-light:#eff6ff;
+  --red:#dc2626;--red-bg:#fef2f2;
+  --amber:#92400e;--amber-bg:#fef9c3;
+  --navy:#0f172a;--navy2:#1e293b;--navy3:#334155;
+  --slate:#64748b;--slate-light:#94a3b8;
+  --border:#e2e8f0;--bg:#f1f5f9;--white:#fff;
+  --purple:#6d28d9;--purple-bg:#ede9fe;
+  --teal:#0f766e;--teal-bg:#ccfbf1;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:var(--bg);color:#111;font-size:14px}
+.topbar{background:var(--navy);color:#fff;padding:0 20px;display:flex;align-items:center;justify-content:space-between;height:48px;position:sticky;top:0;z-index:200}
+.topbar h1{font-size:15px;font-weight:700;letter-spacing:0.02em}
+.conn{font-size:12px;color:#4ade80;display:flex;align-items:center;gap:6px}
+.conn-dot{width:8px;height:8px;border-radius:50%;background:#4ade80;animation:blink 2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+
+/* NAV */
+.nav{background:var(--navy2);display:flex;padding:0 10px;overflow-x:auto;gap:2px}
+.nav button{padding:10px 16px;background:transparent;border:none;color:var(--slate-light);font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;transition:all 0.12s}
+.nav button.active{color:#fff;border-bottom-color:#4ade80}
+.nav button:hover{color:#e2e8f0;background:rgba(255,255,255,0.05)}
+.nav button.cr-tab.active{border-bottom-color:#86efac}
+.nav button.dr-tab.active{border-bottom-color:#93c5fd}
+
+.main{padding:14px;max-width:1280px;margin:0 auto}
+.sec{display:none}.sec.active{display:block}
+
+/* CARDS */
+.card{background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,0.05)}
+.card-title{font-size:13px;font-weight:700;color:var(--navy3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card-title .pill{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700}
+.pill-cr{background:var(--green-bg);color:var(--green)}
+.pill-dr{background:var(--blue-bg);color:var(--blue)}
+
+/* FORMS */
+.frow{display:grid;gap:10px;margin-bottom:10px}
+.f2{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.f3{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+.f4{grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}
+.f5{grid-template-columns:repeat(auto-fit,minmax(100px,1fr))}
+label{font-size:11px;color:var(--slate);display:block;margin-bottom:3px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em}
+input,select,textarea{width:100%;padding:9px 11px;border:1.5px solid #cbd5e1;border-radius:7px;background:var(--white);color:#111;font-size:14px;font-family:Arial,sans-serif;transition:border 0.12s,box-shadow 0.12s}
+input:focus,select:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,0.12)}
+input[readonly]{background:#f8fafc;color:var(--slate);border-style:dashed;cursor:default}
+input.acc-input{font-family:monospace;font-weight:700;font-size:15px;letter-spacing:0.05em}
+.hint{font-size:11px;color:var(--slate-light);margin-top:5px}
+
+/* BUTTONS */
+.btn{padding:9px 22px;border-radius:7px;border:none;font-size:13px;font-weight:700;cursor:pointer;transition:all 0.12s}
+.btn-navy{background:var(--navy);color:#fff}.btn-navy:hover{background:var(--navy2)}
+.btn-green{background:var(--green);color:#fff}.btn-green:hover{background:#166534}
+.btn-blue{background:var(--blue);color:#fff}.btn-blue:hover{background:#1e40af}
+.btn-red{background:var(--red);color:#fff}.btn-red:hover{background:#b91c1c}
+.btn-sm{padding:4px 10px;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--white);color:var(--slate);cursor:pointer;font-weight:600}
+.btn-sm:hover{background:var(--bg);color:#111}
+.btn-edit{padding:4px 11px;font-size:12px;border-radius:6px;border:1px solid #bfdbfe;background:var(--blue-bg);color:var(--blue);cursor:pointer;font-weight:700}
+.btn-del{padding:4px 11px;font-size:12px;border-radius:6px;border:1px solid #fecaca;background:var(--red-bg);color:var(--red);cursor:pointer;font-weight:700}
+.btn-print{padding:8px 16px;font-size:13px;border-radius:7px;border:1px solid var(--border);background:var(--white);color:var(--navy);cursor:pointer;font-weight:700}
+.btn-print:hover{background:var(--bg)}
+
+/* TABLES */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:9px 11px;color:var(--slate);font-weight:700;border-bottom:2px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:0.04em;background:#f8fafc;white-space:nowrap}
+td{padding:8px 11px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+tr:hover td{background:#fafbff}
+tr:last-child td{border-bottom:none}
+.cr-col{color:var(--green);font-weight:700}
+.dr-col{color:var(--blue);font-weight:700}
+.num{text-align:right;font-family:monospace}
+.empty{color:var(--slate-light);text-align:center;padding:2rem;font-size:13px}
+.tfoot-row td{font-weight:700;border-top:2px solid #cbd5e1;background:#f8fafc}
+.acc-num{font-family:monospace;font-size:13px;font-weight:700;color:var(--navy3)}
+.tab-wrap{overflow-x:auto}
+
+/* BADGES */
+.badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700}
+.b-cr{background:var(--green-bg);color:var(--green)}
+.b-dr{background:var(--blue-bg);color:var(--blue)}
+.b-ob{background:var(--amber-bg);color:var(--amber)}
+.b-purple{background:var(--purple-bg);color:var(--purple)}
+.b-teal{background:var(--teal-bg);color:var(--teal)}
+.vno-tag{font-family:monospace;font-size:12px;font-weight:700;padding:2px 8px;border-radius:5px}
+.vno-cr{background:var(--green-bg);color:var(--green);border:1px solid #86efac}
+.vno-dr{background:var(--blue-bg);color:var(--blue);border:1px solid #93c5fd}
+
+/* METRICS */
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:14px}
+.metric{background:var(--white);border:1px solid var(--border);border-radius:10px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,0.04)}
+.metric .lbl{font-size:11px;color:var(--slate);margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em}
+.metric .val{font-size:20px;font-weight:700}
+
+.sec-div{padding:7px 14px;font-size:11px;font-weight:700;color:var(--slate);letter-spacing:0.06em;border-bottom:1px solid var(--border);text-transform:uppercase}
+.sec-div-cr{background:#f0fdf4;color:var(--green)}
+.sec-div-dr{background:var(--blue-light);color:var(--blue)}
+.status-ok{color:var(--green);font-weight:700}
+.status-bad{color:var(--red);font-weight:700}
+.bal-dr{color:var(--blue);font-weight:700}
+.bal-cr{color:var(--green);font-weight:700}
+
+.filter-row{display:flex;gap:8px;align-items:flex-end;margin-bottom:12px;flex-wrap:wrap}
+.filter-row input,.filter-row select{width:auto;min-width:100px}
+
+/* MODAL OVERLAY */
+.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:500;padding:16px}
+.modal{background:var(--white);border-radius:14px;padding:24px 28px;width:100%;max-width:560px;box-shadow:0 24px 60px rgba(0,0,0,0.25);animation:popIn 0.18s ease}
+@keyframes popIn{from{transform:scale(0.94);opacity:0}to{transform:scale(1);opacity:1}}
+.modal-title{font-size:16px;font-weight:700;margin-bottom:18px;display:flex;align-items:center;gap:8px}
+.modal-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+
+/* SUCCESS POPUP */
+.success-popup{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.9);background:var(--white);border-radius:16px;padding:32px 36px;text-align:center;z-index:1000;box-shadow:0 24px 80px rgba(0,0,0,0.3);min-width:300px;animation:popIn 0.2s ease forwards}
+.success-popup.cr-pop{border-top:5px solid var(--green)}
+.success-popup.dr-pop{border-top:5px solid var(--blue)}
+.success-popup .pop-vno{font-size:36px;font-weight:700;font-family:monospace;margin:8px 0}
+.success-popup .pop-vno.cr{color:var(--green)}
+.success-popup .pop-vno.dr{color:var(--blue)}
+.success-popup .pop-acc{font-size:18px;font-weight:700;color:var(--navy);margin-bottom:4px}
+.success-popup .pop-amt{font-size:32px;font-weight:700;margin:6px 0}
+.success-popup .pop-amt.cr{color:var(--green)}
+.success-popup .pop-amt.dr{color:var(--blue)}
+.success-popup .pop-desc{font-size:13px;color:var(--slate);margin-bottom:6px}
+.success-popup .pop-type{font-size:12px;font-weight:700;padding:3px 12px;border-radius:20px;display:inline-block;margin-bottom:12px}
+.pop-bar{height:4px;border-radius:2px;margin-top:16px;animation:shrink 2.8s linear forwards}
+@keyframes shrink{from{width:100%}to{width:0%}}
+.pop-bar-cr{background:var(--green)}
+.pop-bar-dr{background:var(--blue)}
+.pop-dim{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.35);z-index:999}
+
+/* TOAST */
+.toast{position:fixed;bottom:24px;right:24px;padding:11px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:2000;box-shadow:0 4px 16px rgba(0,0,0,0.15);animation:toastIn 0.2s ease}
+@keyframes toastIn{from{transform:translateY(10px);opacity:0}to{transform:translateY(0);opacity:1}}
+.toast-ok{background:var(--navy);color:#4ade80}
+.toast-err{background:var(--red);color:#fff}
+
+.loading{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--slate-light);padding:1.2rem}
+.spinner{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--slate);border-radius:50%;animation:spin 0.7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* COLOR STRIPS ON CARDS */
+.cr-card{border-left:4px solid var(--green)}
+.dr-card{border-left:4px solid var(--blue)}
+.acc-card{border-left:4px solid var(--purple)}
+
+/* SEARCH BOX */
+.search-box{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.search-box input{max-width:280px;flex:1}
+
+/* INLINE PAGE SECTIONS */
+.page-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+.page-header h2{font-size:16px;font-weight:700;color:var(--navy)}
+
+/* RUNNING BALANCE */
+.rb-pos{color:var(--blue);font-weight:700;font-family:monospace}
+.rb-neg{color:var(--green);font-weight:700;font-family:monospace}
+
+/* LOGIN SCREEN */
+.login-screen{position:fixed;inset:0;background:var(--navy);display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column}
+.login-box{background:#1e293b;border-radius:18px;padding:44px 48px;text-align:center;min-width:340px;max-width:400px;width:100%;box-shadow:0 32px 80px rgba(0,0,0,0.5)}
+.login-logo{font-size:26px;font-weight:700;color:#fff;margin-bottom:4px;letter-spacing:0.02em}
+.login-sub{font-size:13px;color:var(--slate-light);margin-bottom:32px}
+.login-field{text-align:left;margin-bottom:14px}
+.login-field label{font-size:11px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:#64748b;display:block;margin-bottom:6px}
+.login-field input{width:100%;padding:11px 14px;background:#0f172a;border:1.5px solid #334155;border-radius:9px;color:#fff;font-size:14px;font-family:Arial,sans-serif;transition:border 0.15s,box-shadow 0.15s}
+.login-field input:focus{outline:none;border-color:#4ade80;box-shadow:0 0 0 3px rgba(74,222,128,0.15)}
+.login-field input::placeholder{color:#475569}
+.login-btn{width:100%;padding:12px;background:#15803d;border:none;border-radius:9px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;margin-top:6px;transition:background 0.15s;letter-spacing:0.02em}
+.login-btn:hover{background:#166534}
+.login-btn:disabled{background:#334155;color:#64748b;cursor:not-allowed}
+.login-err{font-size:12px;color:#f87171;margin-top:12px;min-height:18px;font-weight:600;text-align:center}
+.logout-btn{font-size:12px;color:var(--slate-light);background:transparent;border:1px solid #334155;border-radius:6px;padding:4px 12px;cursor:pointer;font-weight:600;transition:all 0.12s}
+.logout-btn:hover{color:#f87171;border-color:#f87171}
+
+/* DAYBOOK BROUGHT FORWARD */
+.bf-card{background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);border:none;border-radius:10px;padding:16px 20px;margin-bottom:14px;color:#fff}
+.bf-card .bf-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#93c5fd;margin-bottom:8px}
+.bf-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.bf-val{font-size:28px;font-weight:700;font-family:monospace}
+.bf-val.cr{color:#4ade80}.bf-val.dr{color:#93c5fd}
+.bf-edit-btn{padding:5px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:6px;color:#fff;font-size:12px;font-weight:600;cursor:pointer}
+.bf-edit-btn:hover{background:rgba(255,255,255,0.2)}
+.bf-input-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.bf-input-row input,.bf-input-row select{background:#0f172a;border:1px solid #334155;color:#fff;border-radius:7px;padding:7px 10px;font-size:14px;width:auto}
+.bf-input-row input:focus,.bf-input-row select:focus{outline:none;border-color:#4ade80}
+.bf-closing{font-size:13px;color:#cbd5e1;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.1)}
+.bf-closing span{font-weight:700;font-family:monospace;font-size:16px}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>&#9670; Adnan Traders — Khata Book</h1>
+  <div style="display:flex;align-items:center;gap:14px">
+    <span id="user-email" style="font-size:12px;color:#94a3b8"></span>
+    <button class="logout-btn" onclick="doLogout()" id="logout-btn" style="display:none">Logout</button>
+    <div class="conn"><div class="conn-dot"></div><span id="conn-label">Connecting...</span></div>
+  </div>
+</div>
+<div class="nav">
+  <button class="active" onclick="show('accounts')">Account Book</button>
+  <button onclick="show('cr-voucher')" class="cr-tab">Credit Vouchers</button>
+  <button onclick="show('dr-voucher')" class="dr-tab">Debit Vouchers</button>
+  <button onclick="show('daybook')">Daybook</button>
+  <button onclick="show('ledger')">Ledger</button>
+  <button onclick="show('find-voucher')">Find Voucher</button>
+  <button onclick="show('trial')">Trial Balance</button>
+</div>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen" class="login-screen">
+  <div class="login-box">
+    <div class="login-logo">&#9670; Adnan Traders</div>
+    <div class="login-sub">Khata Book — Sign in to continue</div>
+    <div class="login-field">
+      <label>Email Address</label>
+      <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email" onkeydown="if(event.key==='Enter')document.getElementById('login-pass').focus()">
+    </div>
+    <div class="login-field">
+      <label>Password</label>
+      <input type="password" id="login-pass" placeholder="Enter your password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="login-btn" id="login-btn" onclick="doLogin()">Sign In</button>
+    <div class="login-err" id="login-err"></div>
+  </div>
+</div>
+
+<div class="main">
+
+<!-- ═══════════ ACCOUNT BOOK ═══════════ -->
+<div id="accounts" class="sec active">
+  <div class="page-header">
+    <h2>Account Book</h2>
+    <button class="btn-print" onclick="printAccounts()">Print / Export</button>
+  </div>
+  <div class="card acc-card">
+    <div class="card-title">Add / Edit Account</div>
+    <div class="frow f4">
+      <div>
+        <label>Acc No. (editable)</label>
+        <input id="ac-no" class="acc-input" placeholder="e.g. 1001" onkeydown="enav(event,'ac-name')">
+      </div>
+      <div>
+        <label>Account Name</label>
+        <input id="ac-name" placeholder="e.g. Ali Fruit Trader" onkeydown="enav(event,'ac-ref')">
+      </div>
+      <div>
+        <label>Ref No.</label>
+        <input id="ac-ref" placeholder="e.g. A-01" onkeydown="enav(event,'ac-ob')">
+      </div>
+      <div>
+        <label>Opening Bal. (PKR)</label>
+        <input type="number" id="ac-ob" placeholder="0" onkeydown="enav(event,'ac-ob-side')">
+      </div>
+    </div>
+    <div class="frow f3" style="margin-bottom:12px">
+      <div>
+        <label>Opening Bal. Side</label>
+        <select id="ac-ob-side" onkeydown="enav(event,'ac-ob-date')">
+          <option value="DR">Debit (Dr)</option>
+          <option value="CR">Credit (Cr)</option>
+        </select>
+      </div>
+      <div>
+        <label>Opening Bal. Date</label>
+        <input type="date" id="ac-ob-date" onkeydown="if(event.key==='Enter'){saveAccount()}">
+      </div>
+      <div style="padding-top:18px">
+        <button class="btn btn-navy" onclick="saveAccount()" id="ac-btn">Add Account</button>
+        <button class="btn btn-sm" onclick="cancelEditAcc()" id="ac-cancel" style="display:none;margin-left:6px">Cancel</button>
+      </div>
+    </div>
+    <p class="hint">Acc No. is auto-suggested but you can type your own. Press Enter to move between fields.</p>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="tab-wrap">
+      <table>
+        <thead><tr><th>Acc No.</th><th>Account Name</th><th>Ref No.</th><th>Opening Bal.</th><th class="num">Running Balance</th><th>Actions</th></tr></thead>
+        <tbody id="ac-body"><tr><td colspan="6"><div class="loading"><div class="spinner"></div>Loading from cloud...</div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ CREDIT VOUCHER ═══════════ -->
+<div id="cr-voucher" class="sec">
+  <div class="page-header"><h2>Credit Voucher Entry</h2></div>
+  <div class="card cr-card">
+    <div class="card-title"><span class="pill pill-cr">CR</span> Post Credit Voucher</div>
+    <div class="frow f3" style="margin-bottom:10px">
+      <div><label>Date</label><input type="date" id="cr-date" onkeydown="enav(event,'cr-accno')"></div>
+      <div>
+        <label>Voucher No. (auto)</label>
+        <input id="cr-vno" readonly class="acc-input" tabindex="-1" style="color:var(--green);font-size:16px">
+      </div>
+      <div>
+        <label>Acc No. (type number)</label>
+        <input id="cr-accno" class="acc-input" placeholder="e.g. 1001" onkeydown="enav(event,'cr-amt')" oninput="lookupAcc('cr')">
+      </div>
+    </div>
+    <div id="cr-acc-preview" style="display:none;margin-bottom:10px;padding:8px 12px;background:var(--green-light);border:1px solid #86efac;border-radius:8px;font-size:13px;font-weight:700;color:var(--green)"></div>
+    <div class="frow f2" style="margin-bottom:10px">
+      <div>
+        <label>Amount (PKR)</label>
+        <input type="number" id="cr-amt" placeholder="0" onkeydown="enav(event,'cr-narr')" style="font-size:18px;font-weight:700">
+      </div>
+      <div>
+        <label>Description / Narration</label>
+        <input id="cr-narr" placeholder="e.g. received from buyer" onkeydown="if(event.key==='Enter'){postVoucher('CR')}">
+      </div>
+    </div>
+    <button class="btn btn-green" onclick="postVoucher('CR')">Post Credit Voucher &nbsp;(Enter)</button>
+    <p class="hint" style="margin-top:8px">Type account number directly — no mouse needed. Press Enter on Description to post.</p>
+  </div>
+
+  <div class="filter-row" style="margin-top:4px">
+    <div><label>From</label><input type="date" id="cr-from"></div>
+    <div><label>To</label><input type="date" id="cr-to"></div>
+    <div style="padding-top:18px"><button class="btn-sm" onclick="renderCR()">Filter</button></div>
+    <div style="padding-top:18px"><button class="btn-sm" onclick="document.getElementById('cr-from').value='';document.getElementById('cr-to').value='';renderCR()">Clear</button></div>
+    <div style="padding-top:18px;margin-left:auto"><button class="btn-print" onclick="printVoucherPage('CR')">Print / Export</button></div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="sec-div sec-div-cr">Credit Vouchers</div>
+    <div class="tab-wrap"><table><thead><tr><th>Date</th><th>Voucher No.</th><th>Acc No.</th><th>Account</th><th>Description</th><th class="num">Amount (PKR)</th><th>Actions</th></tr></thead>
+    <tbody id="cr-body"></tbody></table></div>
+    <table><tfoot><tr class="tfoot-row"><td colspan="5">Total Credit</td><td class="num cr-col" id="cr-total">—</td><td></td></tr></tfoot></table>
+  </div>
+</div>
+
+<!-- ═══════════ DEBIT VOUCHER ═══════════ -->
+<div id="dr-voucher" class="sec">
+  <div class="page-header"><h2>Debit Voucher Entry</h2></div>
+  <div class="card dr-card">
+    <div class="card-title"><span class="pill pill-dr">DR</span> Post Debit Voucher</div>
+    <div class="frow f3" style="margin-bottom:10px">
+      <div><label>Date</label><input type="date" id="dr-date" onkeydown="enav(event,'dr-accno')"></div>
+      <div>
+        <label>Voucher No. (auto)</label>
+        <input id="dr-vno" readonly class="acc-input" tabindex="-1" style="color:var(--blue);font-size:16px">
+      </div>
+      <div>
+        <label>Acc No. (type number)</label>
+        <input id="dr-accno" class="acc-input" placeholder="e.g. 1001" onkeydown="enav(event,'dr-amt')" oninput="lookupAcc('dr')">
+      </div>
+    </div>
+    <div id="dr-acc-preview" style="display:none;margin-bottom:10px;padding:8px 12px;background:var(--blue-light);border:1px solid #93c5fd;border-radius:8px;font-size:13px;font-weight:700;color:var(--blue)"></div>
+    <div class="frow f2" style="margin-bottom:10px">
+      <div>
+        <label>Amount (PKR)</label>
+        <input type="number" id="dr-amt" placeholder="0" onkeydown="enav(event,'dr-narr')" style="font-size:18px;font-weight:700">
+      </div>
+      <div>
+        <label>Description / Narration</label>
+        <input id="dr-narr" placeholder="e.g. paid to farmer" onkeydown="if(event.key==='Enter'){postVoucher('DR')}">
+      </div>
+    </div>
+    <button class="btn btn-blue" onclick="postVoucher('DR')">Post Debit Voucher &nbsp;(Enter)</button>
+    <p class="hint" style="margin-top:8px">Type account number directly — no mouse needed. Press Enter on Description to post.</p>
+  </div>
+
+  <div class="filter-row" style="margin-top:4px">
+    <div><label>From</label><input type="date" id="dr-from"></div>
+    <div><label>To</label><input type="date" id="dr-to"></div>
+    <div style="padding-top:18px"><button class="btn-sm" onclick="renderDR()">Filter</button></div>
+    <div style="padding-top:18px"><button class="btn-sm" onclick="document.getElementById('dr-from').value='';document.getElementById('dr-to').value='';renderDR()">Clear</button></div>
+    <div style="padding-top:18px;margin-left:auto"><button class="btn-print" onclick="printVoucherPage('DR')">Print / Export</button></div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="sec-div sec-div-dr">Debit Vouchers</div>
+    <div class="tab-wrap"><table><thead><tr><th>Date</th><th>Voucher No.</th><th>Acc No.</th><th>Account</th><th>Description</th><th class="num">Amount (PKR)</th><th>Actions</th></tr></thead>
+    <tbody id="dr-body"></tbody></table></div>
+    <table><tfoot><tr class="tfoot-row"><td colspan="5">Total Debit</td><td class="num dr-col" id="dr-total">—</td><td></td></tr></tfoot></table>
+  </div>
+</div>
+
+<!-- ═══════════ DAYBOOK ═══════════ -->
+<div id="daybook" class="sec">
+  <div class="page-header">
+    <h2>Daybook</h2>
+    <button class="btn-print" onclick="printDaybook()">Print / Export</button>
+  </div>
+
+  <!-- BROUGHT FORWARD BALANCE -->
+  <div class="bf-card" id="bf-card">
+    <div class="bf-label">Opening Balance — Brought Forward (Cash/Bank)</div>
+    <div id="bf-view">
+      <div class="bf-row">
+        <div>
+          <div style="font-size:11px;color:#93c5fd;margin-bottom:2px">Brought Forward</div>
+          <div class="bf-val" id="bf-display">PKR 0</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#93c5fd;margin-bottom:2px">Side</div>
+          <div class="bf-val" id="bf-side-display" style="font-size:18px">Dr</div>
+        </div>
+        <button class="bf-edit-btn" onclick="showBFEdit()">Edit</button>
+      </div>
+      <div class="bf-closing" id="bf-closing"></div>
+    </div>
+    <div id="bf-edit" style="display:none">
+      <div style="font-size:13px;color:#93c5fd;margin-bottom:8px">Set the opening brought-forward balance for this daybook:</div>
+      <div class="bf-input-row">
+        <div><label style="color:#93c5fd;font-size:11px">Amount (PKR)</label><input type="number" id="bf-amt" placeholder="0" onkeydown="enav(event,'bf-side')"></div>
+        <div><label style="color:#93c5fd;font-size:11px">Side</label>
+          <select id="bf-side" onkeydown="if(event.key==='Enter')saveBF()">
+            <option value="DR">Debit (Dr)</option>
+            <option value="CR">Credit (Cr)</option>
+          </select>
+        </div>
+        <div style="padding-top:18px;display:flex;gap:8px">
+          <button class="bf-edit-btn" onclick="saveBF()">Save</button>
+          <button class="bf-edit-btn" onclick="hideBFEdit()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="filter-row">
+    <div><label>From</label><input type="date" id="db-from"></div>
+    <div><label>To</label><input type="date" id="db-to"></div>
+    <div style="padding-top:18px"><button class="btn-sm" onclick="renderDaybook()">Filter</button></div>
+    <div style="padding-top:18px"><button class="btn-sm" onclick="document.getElementById('db-from').value='';document.getElementById('db-to').value='';renderDaybook()">Clear</button></div>
+  </div>
+  <div class="metrics" id="db-metrics"></div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="sec-div sec-div-cr">Credit Vouchers</div>
+    <div class="tab-wrap"><table><thead><tr><th>Date</th><th>Voucher No.</th><th>Acc No.</th><th>Account</th><th>Description</th><th class="num">Amount (PKR)</th></tr></thead>
+    <tbody id="db-cr-body"></tbody></table></div>
+    <div class="sec-div sec-div-dr">Debit Vouchers</div>
+    <div class="tab-wrap"><table><thead><tr><th>Date</th><th>Voucher No.</th><th>Acc No.</th><th>Account</th><th>Description</th><th class="num">Amount (PKR)</th></tr></thead>
+    <tbody id="db-dr-body"></tbody></table></div>
+    <table><tfoot><tr class="tfoot-row">
+      <td colspan="3">Balance</td>
+      <td class="cr-col">CR: <span id="db-cr-tot">—</span></td>
+      <td class="dr-col">DR: <span id="db-dr-tot">—</span></td>
+      <td id="db-bal" class="num"></td>
+    </tr></tfoot></table>
+  </div>
+</div>
+
+<!-- ═══════════ LEDGER ═══════════ -->
+<div id="ledger" class="sec">
+  <div class="page-header">
+    <h2>Ledger</h2>
+    <button class="btn-print" onclick="printLedger()">Print / Export</button>
+  </div>
+  <div class="filter-row">
+    <div><label>Account No. (type)</label><input id="l-accno" class="acc-input" placeholder="e.g. 1001" oninput="lookupLedger()" style="max-width:160px" onkeydown="if(event.key==='Enter')renderLedger()"></div>
+    <div><label>Or select</label><select id="l-acc" onchange="document.getElementById('l-accno').value=this.value;renderLedger()" style="min-width:200px"><option value="">-- select --</option></select></div>
+  </div>
+  <div id="l-content"><div class="card" style="text-align:center;color:var(--slate-light);padding:2.5rem">Type account number or select to view ledger.</div></div>
+</div>
+
+<!-- ═══════════ FIND VOUCHER ═══════════ -->
+<div id="find-voucher" class="sec">
+  <div class="page-header"><h2>Find &amp; Edit Voucher</h2></div>
+  <div class="card">
+    <div class="frow f4">
+      <div><label>Voucher No.</label><input id="fv-vno" placeholder="e.g. C01" onkeydown="if(event.key==='Enter')searchVoucher()"></div>
+      <div><label>Acc No.</label><input id="fv-accno" class="acc-input" placeholder="e.g. 1001" onkeydown="if(event.key==='Enter')searchVoucher()"></div>
+      <div><label>Date</label><input type="date" id="fv-date" onkeydown="if(event.key==='Enter')searchVoucher()"></div>
+      <div style="padding-top:18px"><button class="btn btn-navy" onclick="searchVoucher()">Search</button></div>
+    </div>
+    <p class="hint">Search by any combination — voucher no., account no., or date. Press Enter to search.</p>
+  </div>
+  <div id="fv-results"><div class="card" style="text-align:center;color:var(--slate-light);padding:2rem">Search results will appear here.</div></div>
+</div>
+
+<!-- ═══════════ TRIAL BALANCE ═══════════ -->
+<div id="trial" class="sec">
+  <div class="page-header">
+    <h2>Trial Balance</h2>
+    <button class="btn-print" onclick="printTrial()">Print / Export</button>
+  </div>
+  <div class="filter-row">
+    <div><label>Period</label><select id="tb-month" onchange="renderTrial()" style="min-width:200px"><option value="">All Time</option></select></div>
+    <span id="tb-status" style="font-size:13px;padding-top:18px;font-weight:700"></span>
+  </div>
+  <div id="trial-content"></div>
+</div>
+
+</div><!-- end main -->
+
+<!-- ═══════════ EDIT VOUCHER MODAL ═══════════ -->
+<div id="edit-modal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <div class="modal-title" id="edit-modal-title">Edit Voucher</div>
+    <input type="hidden" id="e-id">
+    <div class="frow f2">
+      <div><label>Date</label><input type="date" id="e-date" onkeydown="enav(event,'e-accno')"></div>
+      <div><label>Voucher No.</label><input id="e-vno" readonly tabindex="-1" class="acc-input"></div>
+    </div>
+    <div>
+      <label>Acc No. (type number)</label>
+      <input id="e-accno" class="acc-input" placeholder="e.g. 1001" oninput="lookupAcc('e')" onkeydown="enav(event,'e-amt')" style="margin-bottom:6px">
+      <div id="e-acc-preview" style="display:none;padding:6px 10px;background:var(--bg);border-radius:6px;font-size:13px;font-weight:700;color:var(--navy3);margin-bottom:8px"></div>
+    </div>
+    <div class="frow f2">
+      <div><label>Amount (PKR)</label><input type="number" id="e-amt" onkeydown="enav(event,'e-narr')" style="font-size:16px;font-weight:700"></div>
+      <div><label>Description</label><input id="e-narr" onkeydown="if(event.key==='Enter'){saveEdit()}"></div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-sm" onclick="closeEdit()">Cancel (Esc)</button>
+      <button class="btn btn-navy" onclick="saveEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ SUCCESS POPUP ═══════════ -->
+<div id="pop-dim" class="pop-dim" style="display:none"></div>
+<div id="success-pop" style="display:none"></div>
+
+<script>
+const SB_URL='https://mvkskakgacrmzphpspem.supabase.co';
+const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im12a3NrYWtnYWNybXpwaHBzcGVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ3MDM4ODMsImV4cCI6MjA5MDI3OTg4M30.8Q1VokhbSCgRbn3fsNAFZo7DcAb7SSpoxHDVcchbaJU';
+const sb=supabase.createClient(SB_URL,SB_KEY);
+
+let accounts=[],vouchers=[],nextAccNo=1001,nextVno={CR:1,DR:1},editingAccNo=null;
+
+const fmt=n=>Number(n).toLocaleString('en-PK',{minimumFractionDigits:0,maximumFractionDigits:0});
+const today=()=>new Date().toISOString().split('T')[0];
+const vnoStr=(t,n)=>(t==='CR'?'C':'D')+String(n).padStart(2,'0');
+
+function enav(e,nid){
+  if(e.key==='Enter'){e.preventDefault();const el=document.getElementById(nid);if(el){el.focus();if(el.select)el.select();}}
+}
+
+function toast(msg,ok=true){
+  const d=document.createElement('div');d.className='toast '+(ok?'toast-ok':'toast-err');d.textContent=msg;
+  document.body.appendChild(d);setTimeout(()=>d.remove(),2800);
+}
+
+function showSuccessPopup(type,vno,accName,amt,narr){
+  const isCR=type==='CR';
+  const colorClass=isCR?'cr':'dr';
+  const bgClass=isCR?'cr-pop':'dr-pop';
+  const label=isCR?'Credit Voucher':'Debit Voucher';
+  const badgeBg=isCR?'var(--green-bg)':'var(--blue-bg)';
+  const badgeColor=isCR?'var(--green)':'var(--blue)';
+  const barClass=isCR?'pop-bar-cr':'pop-bar-dr';
+  document.getElementById('pop-dim').style.display='block';
+  const pop=document.getElementById('success-pop');
+  pop.innerHTML=`<div class="success-popup ${bgClass}">
+    <div style="font-size:12px;font-weight:700;padding:3px 14px;border-radius:20px;display:inline-block;margin-bottom:8px;background:${badgeBg};color:${badgeColor}">${label} Posted</div>
+    <div class="pop-vno ${colorClass}">${vno}</div>
+    <div class="pop-acc">${accName}</div>
+    <div class="pop-amt ${colorClass}">PKR ${fmt(amt)}</div>
+    <div class="pop-desc">${narr||'—'}</div>
+    <div class="pop-bar ${barClass}"></div>
+  </div>`;
+  pop.style.display='block';
+  setTimeout(()=>{pop.style.display='none';document.getElementById('pop-dim').style.display='none';},2900);
+}
+
+function lookupAcc(prefix){
+  const val=document.getElementById(prefix+'-accno').value.trim();
+  const acc=accounts.find(a=>String(a.no)===val||String(a.id)===val);
+  const prev=document.getElementById(prefix+'-acc-preview');
+  if(acc&&prev){
+    const rb=runBal(acc.no);const side=rb>=0?'Dr':'Cr';
+    prev.textContent=acc.no+' — '+acc.name+(acc.ref?' (Ref: '+acc.ref+')':'')+' | Balance: '+fmt(Math.abs(rb))+' '+side;
+    prev.style.display='block';
+  }else if(prev){prev.style.display='none';}
+}
+
+function lookupLedger(){
+  const val=document.getElementById('l-accno').value.trim();
+  document.getElementById('l-acc').value=val;
+  if(val.length>=3)renderLedger();
+}
+
+function updateVnoDisplays(){
+  document.getElementById('cr-vno').value=vnoStr('CR',nextVno.CR);
+  document.getElementById('dr-vno').value=vnoStr('DR',nextVno.DR);
+}
+
+function runBal(accNo){
+  const acc=accounts.find(a=>a.no===accNo);if(!acc)return 0;
+  let b=acc.ob?(acc.obSide==='DR'?acc.ob:-acc.ob):0;
+  vouchers.filter(v=>v.accId===accNo).forEach(v=>{b+=v.type==='DR'?v.amt:-v.amt;});
+  return b;
+}
+
+/* ── ACCOUNTS ── */
+async function saveAccount(){
+  const noRaw=document.getElementById('ac-no').value.trim();
+  const no=parseInt(noRaw);
+  const name=document.getElementById('ac-name').value.trim();
+  const ref=document.getElementById('ac-ref').value.trim();
+  const ob=parseFloat(document.getElementById('ac-ob').value)||0;
+  const obSide=document.getElementById('ac-ob-side').value;
+  const obDate=document.getElementById('ac-ob-date').value||null;
+  if(!name||!no){toast('Enter account name and number.',false);return;}
+
+  if(editingAccNo!==null){
+    // UPDATE
+    const acc=accounts.find(a=>a.no===editingAccNo);
+    const {error}=await sb.from('accounts').update({name,ref,ob,ob_side:obSide,ob_date:obDate}).eq('id',acc.dbId);
+    if(error){toast('Error: '+error.message,false);return;}
+    acc.name=name;acc.ref=ref;acc.ob=ob;acc.obSide=obSide;acc.obDate=obDate||'';
+    // update cached names in vouchers
+    vouchers.filter(v=>v.accId===editingAccNo).forEach(v=>v.accName=name);
+    toast('Account updated.');cancelEditAcc();
+  }else{
+    // INSERT
+    if(accounts.find(a=>a.no===no)){toast('Account number already exists.',false);return;}
+    const {data,error}=await sb.from('accounts').insert({acc_no:no,name,type:'General',ref,ob,ob_side:obSide,ob_date:obDate}).select().single();
+    if(error){toast('Error: '+error.message,false);return;}
+    accounts.push({id:no,no,dbId:data.id,name,ref,ob,obSide,obDate:obDate||''});
+    if(no>=nextAccNo)nextAccNo=no+1;
+    await sb.from('meta').upsert({key:'next_acc_no',value:String(nextAccNo)});
+    document.getElementById('ac-no').value=nextAccNo;
+    ['ac-name','ac-ref','ac-ob','ac-ob-date'].forEach(id=>document.getElementById(id).value='');
+    toast('Account '+no+' — '+name+' added.');
+  }
+  populateSelects();refreshAll();
+  document.getElementById('ac-name').focus();
+}
+
+function startEditAcc(no){
+  const acc=accounts.find(a=>a.no===no);if(!acc)return;
+  editingAccNo=no;
+  document.getElementById('ac-no').value=acc.no;document.getElementById('ac-no').readOnly=true;
+  document.getElementById('ac-name').value=acc.name;document.getElementById('ac-ref').value=acc.ref||'';
+  document.getElementById('ac-ob').value=acc.ob||'';document.getElementById('ac-ob-side').value=acc.obSide||'DR';
+  document.getElementById('ac-ob-date').value=acc.obDate||'';
+  document.getElementById('ac-btn').textContent='Save Changes';
+  document.getElementById('ac-cancel').style.display='inline-block';
+  document.getElementById('ac-name').focus();
+  window.scrollTo({top:0,behavior:'smooth'});
+  show('accounts');
+}
+
+function cancelEditAcc(){
+  editingAccNo=null;
+  document.getElementById('ac-no').readOnly=false;document.getElementById('ac-no').value=nextAccNo;
+  ['ac-name','ac-ref','ac-ob','ac-ob-date'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('ac-btn').textContent='Add Account';
+  document.getElementById('ac-cancel').style.display='none';
+}
+
+async function deleteAccount(no){
+  if(vouchers.some(v=>v.accId===no)){toast('Cannot delete: account has vouchers.',false);return;}
+  if(!confirm('Remove this account?'))return;
+  await sb.from('accounts').delete().eq('acc_no',no);
+  accounts=accounts.filter(a=>a.no!==no);populateSelects();refreshAll();toast('Account removed.');
+}
+
+function renderAccounts(){
+  const tb=document.getElementById('ac-body');
+  if(!accounts.length){tb.innerHTML='<tr><td colspan="6" class="empty">No accounts yet.</td></tr>';return;}
+  tb.innerHTML=accounts.map(a=>{
+    const b=runBal(a.no);const side=b>=0?'Dr':'Cr';
+    return`<tr>
+      <td class="acc-num">${a.no}</td>
+      <td><strong>${a.name}</strong></td>
+      <td style="color:var(--slate)">${a.ref||'—'}</td>
+      <td>${a.ob?`<span class="badge b-ob">${fmt(a.ob)} ${a.obSide}</span>`:'—'}</td>
+      <td class="num"><span class="${b>=0?'rb-pos':'rb-neg'}">${fmt(Math.abs(b))} ${side}</span></td>
+      <td style="white-space:nowrap">
+        <button class="btn-edit" onclick="startEditAcc(${a.no})">Edit</button>
+        <button class="btn-del" style="margin-left:4px" onclick="deleteAccount(${a.no})">Del</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function populateSelects(){
+  ['l-acc'].forEach(id=>{
+    const el=document.getElementById(id);if(!el)return;
+    const p=el.value;el.innerHTML='<option value="">-- select --</option>';
+    accounts.forEach(a=>{const o=document.createElement('option');o.value=a.no;o.textContent=a.no+' — '+a.name;el.appendChild(o);});
+    el.value=p;
+  });
+}
+
+/* ── POST VOUCHER ── */
+async function postVoucher(type){
+  const pfx=type==='CR'?'cr':'dr';
+  const date=document.getElementById(pfx+'-date').value;
+  const accNoRaw=document.getElementById(pfx+'-accno').value.trim();
+  const accNo=parseInt(accNoRaw);
+  const amt=parseFloat(document.getElementById(pfx+'-amt').value);
+  const narr=document.getElementById(pfx+'-narr').value.trim();
+  if(!date||!accNo||!amt){toast('Fill date, account number and amount.',false);return;}
+  const acc=accounts.find(a=>a.no===accNo);
+  if(!acc){toast('Account '+accNo+' not found.',false);document.getElementById(pfx+'-accno').focus();return;}
+  const vno=vnoStr(type,nextVno[type]);
+  const {data,error}=await sb.from('vouchers').insert({date,type,acc_id:acc.dbId,acc_name:acc.name,acc_no:accNo,vno,amt,narr}).select().single();
+  if(error){toast('Error: '+error.message,false);return;}
+  vouchers.push({id:data.id,date,type,accId:accNo,accName:acc.name,accNo,vno,amt,narr});
+  nextVno[type]++;
+  await sb.from('meta').upsert({key:type==='CR'?'next_cv_no':'next_dv_no',value:String(nextVno[type])});
+  updateVnoDisplays();
+  showSuccessPopup(type,vno,acc.name,amt,narr);
+  document.getElementById(pfx+'-amt').value='';
+  document.getElementById(pfx+'-narr').value='';
+  document.getElementById(pfx+'-accno').value='';
+  document.getElementById(pfx+'-acc-preview').style.display='none';
+  refreshAll();
+  setTimeout(()=>document.getElementById(pfx+'-accno').focus(),200);
+}
+
+/* ── VOUCHER ROW ── */
+function vRow(v,showActions=true){
+  const isCR=v.type==='CR';
+  return`<tr>
+    <td>${v.date}</td>
+    <td><span class="vno-tag ${isCR?'vno-cr':'vno-dr'}">${v.vno}</span></td>
+    <td class="acc-num">${v.accNo}</td>
+    <td>${v.accName}</td>
+    <td style="color:var(--slate);font-size:12px">${v.narr||'—'}</td>
+    <td class="num ${isCR?'cr-col':'dr-col'}">${fmt(v.amt)}</td>
+    ${showActions?`<td style="white-space:nowrap"><button class="btn-edit" onclick="openEdit(${v.id})">Edit</button> <button class="btn-del" onclick="delVoucher(${v.id})">Del</button></td>`:'<td></td>'}
+  </tr>`;
+}
+
+function getCRFiltered(){
+  const fr=document.getElementById('cr-from').value,to=document.getElementById('cr-to').value;
+  let f=vouchers.filter(v=>v.type==='CR').sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
+  if(fr)f=f.filter(v=>v.date>=fr);if(to)f=f.filter(v=>v.date<=to);return f;
+}
+function getDRFiltered(){
+  const fr=document.getElementById('dr-from').value,to=document.getElementById('dr-to').value;
+  let f=vouchers.filter(v=>v.type==='DR').sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
+  if(fr)f=f.filter(v=>v.date>=fr);if(to)f=f.filter(v=>v.date<=to);return f;
+}
+
+function renderCR(){
+  const f=getCRFiltered();const tot=f.reduce((s,v)=>s+v.amt,0);
+  document.getElementById('cr-body').innerHTML=f.length?f.map(v=>vRow(v)).join(''):'<tr><td colspan="7" class="empty">No credit vouchers.</td></tr>';
+  document.getElementById('cr-total').textContent='PKR '+fmt(tot);
+}
+function renderDR(){
+  const f=getDRFiltered();const tot=f.reduce((s,v)=>s+v.amt,0);
+  document.getElementById('dr-body').innerHTML=f.length?f.map(v=>vRow(v)).join(''):'<tr><td colspan="7" class="empty">No debit vouchers.</td></tr>';
+  document.getElementById('dr-total').textContent='PKR '+fmt(tot);
+}
+
+function renderDaybook(){
+  const fr=document.getElementById('db-from').value,to=document.getElementById('db-to').value;
+  let f=vouchers.slice().sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
+  if(fr)f=f.filter(v=>v.date>=fr);if(to)f=f.filter(v=>v.date<=to);
+  const crs=f.filter(v=>v.type==='CR'),drs=f.filter(v=>v.type==='DR');
+  const tCr=crs.reduce((s,v)=>s+v.amt,0),tDr=drs.reduce((s,v)=>s+v.amt,0);
+  document.getElementById('db-cr-body').innerHTML=crs.length?crs.map(v=>vRow(v,false)).join(''):'<tr><td colspan="7" class="empty">No credit vouchers.</td></tr>';
+  document.getElementById('db-dr-body').innerHTML=drs.length?drs.map(v=>vRow(v,false)).join(''):'<tr><td colspan="7" class="empty">No debit vouchers.</td></tr>';
+  document.getElementById('db-cr-tot').textContent='PKR '+fmt(tCr);
+  document.getElementById('db-dr-tot').textContent='PKR '+fmt(tDr);
+  const diff=Math.abs(tCr-tDr);
+  document.getElementById('db-bal').innerHTML=tCr===0&&tDr===0?'':(diff<1?'<span class="status-ok">&#10003; Balanced</span>':'<span class="status-bad">Diff: PKR '+fmt(diff)+'</span>');
+  document.getElementById('db-metrics').innerHTML=`
+    <div class="metric"><div class="lbl">Total Credit</div><div class="val cr-col">PKR ${fmt(tCr)}</div></div>
+    <div class="metric"><div class="lbl">Total Debit</div><div class="val dr-col">PKR ${fmt(tDr)}</div></div>
+    <div class="metric"><div class="lbl">Net</div><div class="val" style="color:${tCr>=tDr?'var(--green)':'var(--red)'}">PKR ${fmt(Math.abs(tCr-tDr))}</div></div>
+    <div class="metric"><div class="lbl">Vouchers</div><div class="val">${f.length}</div></div>`;
+  if(typeof renderBF==='function')renderBF();
+}
+
+/* ── REFRESH ALL VIEWS ── */
+function refreshAll(){
+  renderAccounts();
+  renderCR();
+  renderDR();
+  renderDaybook();
+  // re-render ledger if an account is selected
+  const lAccNo=document.getElementById('l-accno').value.trim()||document.getElementById('l-acc').value;
+  if(lAccNo)renderLedger();
+  // re-render trial balance if it is visible
+  if(document.getElementById('trial').classList.contains('active'))renderTrial();
+  // re-render find-voucher results if visible
+  if(document.getElementById('find-voucher').classList.contains('active')){
+    const hasSearch=document.getElementById('fv-vno').value||document.getElementById('fv-accno').value||document.getElementById('fv-date').value;
+    if(hasSearch)searchVoucher();
+  }
+}
+
+/* ── DELETE VOUCHER ── */
+async function delVoucher(id){
+  if(!confirm('Delete this voucher?'))return;
+  const v=vouchers.find(x=>x.id===id);
+  await sb.from('vouchers').delete().eq('id',id);
+  vouchers=vouchers.filter(v=>v.id!==id);
+  refreshAll();
+  toast('Voucher D/C deleted — all books updated.');
+}
+
+/* ── EDIT VOUCHER ── */
+function openEdit(id){
+  const v=vouchers.find(x=>x.id===id);if(!v)return;
+  const isCR=v.type==='CR';
+  document.getElementById('e-id').value=v.id;
+  document.getElementById('e-date').value=v.date;
+  document.getElementById('e-vno').value=v.vno;
+  document.getElementById('e-vno').style.color=isCR?'var(--green)':'var(--blue)';
+  document.getElementById('e-accno').value=v.accId;
+  document.getElementById('e-amt').value=v.amt;
+  document.getElementById('e-narr').value=v.narr||'';
+  document.getElementById('edit-modal-title').innerHTML=(isCR?'<span style="color:var(--green)">Edit Credit Voucher</span>':'<span style="color:var(--blue)">Edit Debit Voucher</span>');
+  lookupAcc('e');
+  document.getElementById('edit-modal').style.display='flex';
+  setTimeout(()=>document.getElementById('e-date').focus(),80);
+}
+function closeEdit(){document.getElementById('edit-modal').style.display='none';}
+
+async function saveEdit(){
+  const id=parseInt(document.getElementById('e-id').value);
+  const date=document.getElementById('e-date').value;
+  const accNo=parseInt(document.getElementById('e-accno').value);
+  const vno=document.getElementById('e-vno').value;
+  const amt=parseFloat(document.getElementById('e-amt').value);
+  const narr=document.getElementById('e-narr').value.trim();
+  if(!date||!accNo||!amt){toast('Fill all fields.',false);return;}
+  const acc=accounts.find(a=>a.no===accNo);
+  if(!acc){toast('Account '+accNo+' not found.',false);return;}
+  const v=vouchers.find(x=>x.id===id);
+  const {error}=await sb.from('vouchers').update({date,acc_id:acc.dbId,acc_name:acc.name,acc_no:accNo,vno,amt,narr}).eq('id',id);
+  if(error){toast('Error: '+error.message,false);return;}
+  Object.assign(v,{date,accId:accNo,accName:acc.name,accNo,vno,amt,narr});
+  closeEdit();
+  toast('Voucher updated — all books refreshed.');
+  refreshAll();
+}
+
+/* ── SEARCH VOUCHER ── */
+function searchVoucher(){
+  const vno=document.getElementById('fv-vno').value.trim().toUpperCase();
+  const accNo=document.getElementById('fv-accno').value.trim();
+  const date=document.getElementById('fv-date').value;
+  let res=vouchers.slice();
+  if(vno)res=res.filter(v=>v.vno.toUpperCase().includes(vno));
+  if(accNo)res=res.filter(v=>String(v.accNo)===accNo||String(v.accId)===accNo);
+  if(date)res=res.filter(v=>v.date===date);
+  res.sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
+  const cont=document.getElementById('fv-results');
+  if(!res.length){cont.innerHTML='<div class="card" style="text-align:center;color:var(--slate-light);padding:2rem">No vouchers found.</div>';return;}
+  cont.innerHTML=`<div class="card" style="padding:0;overflow:hidden">
+    <div class="sec-div" style="background:var(--bg)">Results (${res.length} found)</div>
+    <div class="tab-wrap"><table>
+      <thead><tr><th>Date</th><th>Voucher No.</th><th>Type</th><th>Acc No.</th><th>Account</th><th>Description</th><th class="num">Amount (PKR)</th><th>Actions</th></tr></thead>
+      <tbody>${res.map(v=>`<tr>
+        <td>${v.date}</td>
+        <td><span class="vno-tag ${v.type==='CR'?'vno-cr':'vno-dr'}">${v.vno}</span></td>
+        <td><span class="badge ${v.type==='CR'?'b-cr':'b-dr'}">${v.type}</span></td>
+        <td class="acc-num">${v.accNo}</td><td>${v.accName}</td>
+        <td style="color:var(--slate);font-size:12px">${v.narr||'—'}</td>
+        <td class="num ${v.type==='CR'?'cr-col':'dr-col'}">${fmt(v.amt)}</td>
+        <td style="white-space:nowrap"><button class="btn-edit" onclick="openEdit(${v.id})">Edit</button> <button class="btn-del" onclick="delVoucher(${v.id})">Del</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+  </div>`;
+}
+
+/* ── LEDGER ── */
+function renderLedger(){
+  const accNoRaw=document.getElementById('l-accno').value.trim()||document.getElementById('l-acc').value;
+  const accNo=parseInt(accNoRaw);
+  const cont=document.getElementById('l-content');
+  if(!accNo){cont.innerHTML='<div class="card" style="text-align:center;color:var(--slate-light);padding:2.5rem">Type account number or select above.</div>';return;}
+  const acc=accounts.find(a=>a.no===accNo);
+  if(!acc){cont.innerHTML='<div class="card" style="text-align:center;color:var(--red);padding:2rem">Account '+accNo+' not found.</div>';return;}
+  const rel=vouchers.filter(v=>v.accId===accNo).sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
+  let rb=acc.ob?(acc.obSide==='DR'?acc.ob:-acc.ob):0;let rows='';
+  if(acc.ob){
+    const s=rb>=0?'Dr':'Cr';
+    rows+=`<tr style="background:var(--amber-bg)"><td>${acc.obDate||'—'}</td><td>—</td><td style="color:var(--slate);font-size:12px">Opening Balance</td><td class="num dr-col">${acc.obSide==='DR'?fmt(acc.ob):''}</td><td class="num cr-col">${acc.obSide==='CR'?fmt(acc.ob):''}</td><td class="num ${rb>=0?'rb-pos':'rb-neg'}">${fmt(Math.abs(rb))} ${s}</td></tr>`;
+  }
+  rel.forEach(v=>{
+    const dr=v.type==='DR'?v.amt:'',cr=v.type==='CR'?v.amt:'';
+    rb+=v.type==='DR'?v.amt:-v.amt;const s=rb>=0?'Dr':'Cr';
+    rows+=`<tr><td>${v.date}</td><td><span class="vno-tag ${v.type==='CR'?'vno-cr':'vno-dr'}">${v.vno}</span></td><td style="color:var(--slate);font-size:12px">${v.narr||'—'}</td><td class="num dr-col">${dr?fmt(dr):''}</td><td class="num cr-col">${cr?fmt(cr):''}</td><td class="num ${rb>=0?'rb-pos':'rb-neg'}">${fmt(Math.abs(rb))} ${s}</td></tr>`;
+  });
+  const tDr=rel.filter(v=>v.type==='DR').reduce((s,v)=>s+v.amt,0)+(acc.ob&&acc.obSide==='DR'?acc.ob:0);
+  const tCr=rel.filter(v=>v.type==='CR').reduce((s,v)=>s+v.amt,0)+(acc.ob&&acc.obSide==='CR'?acc.ob:0);
+  const fb=tDr-tCr;
+  cont.innerHTML=`
+  <div class="metrics">
+    <div class="metric"><div class="lbl">Account</div><div class="val" style="font-size:15px;padding-top:4px">${acc.name}</div></div>
+    <div class="metric"><div class="lbl">Acc No.</div><div class="val" style="font-size:22px">${acc.no}</div></div>
+    <div class="metric"><div class="lbl">Total Debit</div><div class="val dr-col">PKR ${fmt(tDr)}</div></div>
+    <div class="metric"><div class="lbl">Total Credit</div><div class="val cr-col">PKR ${fmt(tCr)}</div></div>
+    <div class="metric"><div class="lbl">Balance</div><div class="val ${fb>=0?'dr-col':'cr-col'}">PKR ${fmt(Math.abs(fb))} ${fb>=0?'Dr':'Cr'}</div></div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div style="padding:10px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);background:#f8fafc;flex-wrap:wrap;gap:8px">
+      <span style="font-weight:700;font-size:15px">${acc.name}</span>
+      <span class="acc-num">No. ${acc.no}${acc.ref?' | Ref: '+acc.ref:''}</span>
+    </div>
+    <div class="tab-wrap"><table>
+      <thead><tr><th>Date</th><th>Voucher No.</th><th>Description</th><th class="num">Debit (PKR)</th><th class="num">Credit (PKR)</th><th class="num">Running Balance</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="6" class="empty">No transactions yet.</td></tr>'}</tbody>
+      <tfoot><tr class="tfoot-row"><td colspan="3">Total</td><td class="num dr-col">${fmt(tDr)}</td><td class="num cr-col">${fmt(tCr)}</td><td class="num ${fb>=0?'rb-pos':'rb-neg'}">${fmt(Math.abs(fb))} ${fb>=0?'Dr':'Cr'}</td></tr></tfoot>
+    </table></div>
+  </div>`;
+}
+
+/* ── TRIAL BALANCE ── */
+function buildMonthOptions(){
+  const months=new Set();vouchers.forEach(v=>months.add(v.date.slice(0,7)));
+  const sel=document.getElementById('tb-month');const p=sel.value;
+  sel.innerHTML='<option value="">All Time</option>';
+  Array.from(months).sort().reverse().forEach(m=>{const o=document.createElement('option');o.value=m;const[y,mo]=m.split('-');o.textContent=new Date(y,mo-1).toLocaleString('en-US',{month:'long',year:'numeric'});sel.appendChild(o);});
+  if(p)sel.value=p;
+}
+
+function renderTrial(){
+  const month=document.getElementById('tb-month').value;
+  const filtered=month?vouchers.filter(v=>v.date.startsWith(month)):vouchers;
+  const drT={},crT={};
+  accounts.forEach(a=>{drT[a.no]=0;crT[a.no]=0;if(a.ob){if(a.obSide==='DR')drT[a.no]+=a.ob;else crT[a.no]+=a.ob;}});
+  filtered.forEach(v=>{if(v.type==='DR')drT[v.accId]=(drT[v.accId]||0)+v.amt;else crT[v.accId]=(crT[v.accId]||0)+v.amt;});
+  let gDr=0,gCr=0,rows='';
+  accounts.forEach(a=>{const dr=drT[a.no]||0,cr=crT[a.no]||0;if(!dr&&!cr)return;gDr+=dr;gCr+=cr;
+    rows+=`<tr><td class="acc-num">${a.no}</td><td><strong>${a.name}</strong></td><td style="color:var(--slate)">${a.ref||'—'}</td><td class="num dr-col">${dr?fmt(dr):''}</td><td class="num cr-col">${cr?fmt(cr):''}</td></tr>`;
+  });
+  const balanced=Math.abs(gDr-gCr)<1;
+  const ml=month?(()=>{const[y,mo]=month.split('-');return new Date(y,mo-1).toLocaleString('en-US',{month:'long',year:'numeric'});})():'All Time';
+  document.getElementById('tb-status').innerHTML=gDr===0&&gCr===0?'':`<span class="${balanced?'status-ok':'status-bad'}">${balanced?'✓ Balanced':'✗ Not Balanced — Diff: PKR '+fmt(Math.abs(gDr-gCr))}</span>`;
+  document.getElementById('trial-content').innerHTML=`
+  <div class="metrics">
+    <div class="metric"><div class="lbl">Total Debit</div><div class="val dr-col">PKR ${fmt(gDr)}</div></div>
+    <div class="metric"><div class="lbl">Total Credit</div><div class="val cr-col">PKR ${fmt(gCr)}</div></div>
+    <div class="metric"><div class="lbl">Difference</div><div class="val" style="color:${balanced?'var(--green)':'var(--red)'}">PKR ${fmt(Math.abs(gDr-gCr))}</div></div>
+    <div class="metric"><div class="lbl">Period</div><div class="val" style="font-size:13px;padding-top:6px">${ml}</div></div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="tab-wrap"><table>
+      <thead><tr><th>Acc No.</th><th>Account Name</th><th>Ref No.</th><th class="num">Debit (PKR)</th><th class="num">Credit (PKR)</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="5" class="empty">No transactions for this period.</td></tr>'}</tbody>
+      <tfoot><tr class="tfoot-row"><td colspan="3">Grand Total</td><td class="num dr-col">${fmt(gDr)}</td><td class="num cr-col">${fmt(gCr)}</td></tr></tfoot>
+    </table></div>
+  </div>`;
+}
+
+/* ── NAV ── */
+function show(id){
+  document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const map={'accounts':0,'cr-voucher':1,'dr-voucher':2,'daybook':3,'ledger':4,'find-voucher':5,'trial':6};
+  document.querySelectorAll('.nav button')[map[id]].classList.add('active');
+  if(id==='trial'){buildMonthOptions();renderTrial();}
+  if(id==='ledger')renderLedger();
+  if(id==='daybook')renderDaybook();
+  if(id==='cr-voucher'){renderCR();setTimeout(()=>document.getElementById('cr-accno').focus(),100);}
+  if(id==='dr-voucher'){renderDR();setTimeout(()=>document.getElementById('dr-accno').focus(),100);}
+  if(id==='find-voucher')setTimeout(()=>document.getElementById('fv-vno').focus(),100);
+}
+
+/* ── PRINT ── */
+function printBase(title,html,info){
+  const win=window.open('','_blank','width=1000,height=720');
+  const d=new Date().toLocaleDateString('en-PK',{year:'numeric',month:'long',day:'numeric'});
+  win.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>body{font-family:Arial,sans-serif;font-size:13px;padding:28px;color:#111}h1{font-size:19px;font-weight:700;margin-bottom:2px}.sub{color:#555;font-size:12px;margin-bottom:18px;padding-bottom:8px;border-bottom:1px solid #ddd}table{width:100%;border-collapse:collapse;margin-top:8px}th{text-align:left;padding:8px 10px;border-bottom:2px solid #111;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;background:#f8f8f8}td{padding:7px 10px;border-bottom:1px solid #eee}.num{text-align:right;font-family:monospace}.dr{color:#1d4ed8;font-weight:700}.cr{color:#15803d;font-weight:700}tfoot td{font-weight:700;border-top:2px solid #111;background:#f8f8f8}.vno{font-family:monospace;font-weight:700;font-size:12px;padding:1px 6px;border-radius:3px}.footer{margin-top:24px;font-size:11px;color:#999;border-top:1px solid #eee;padding-top:8px;display:flex;justify-content:space-between}@media print{.np{display:none}body{padding:10px}}</style></head><body><h1>Adnan Traders — ${title}</h1><div class="sub">${info} | ${d}</div>${html}<div class="footer"><span>Adnan Traders Khata Book</span><span>Fruit Commission Agent, Pakistan</span></div><div class="np" style="margin-top:16px"><button onclick="window.print()" style="padding:9px 24px;cursor:pointer;font-size:14px;background:#0f172a;color:#fff;border:none;border-radius:6px">Print / Save PDF</button></div></body></html>`);
+  win.document.close();
+}
+
+function printVoucherPage(type){
+  const f=type==='CR'?getCRFiltered():getDRFiltered();
+  const tot=f.reduce((s,v)=>s+v.amt,0);
+  const label=type==='CR'?'Credit':'Debit';
+  const mkR=arr=>arr.map(v=>`<tr><td>${v.date}</td><td class="vno">${v.vno}</td><td>${v.accNo}</td><td>${v.accName}</td><td>${v.narr||'—'}</td><td class="num">${fmt(v.amt)}</td></tr>`).join('');
+  printBase(`${label} Vouchers`,`<table><thead><tr><th>Date</th><th>Voucher No.</th><th>Acc No.</th><th>Account</th><th>Description</th><th class="num">Amount (PKR)</th></tr></thead><tbody>${f.length?mkR(f):'<tr><td colspan="6" style="color:#aaa">None.</td></tr>'}</tbody><tfoot><tr><td colspan="5">Total ${label}</td><td class="num ${type==='CR'?'cr':'dr'}">${fmt(tot)}</td></tr></tfoot></table>`,'All dates');
+}
+
+function printDaybook(){
+  const f=vouchers.slice().sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
+  const crs=f.filter(v=>v.type==='CR'),drs=f.filter(v=>v.type==='DR');
+  const tCr=crs.reduce((s,v)=>s+v.amt,0),tDr=drs.reduce((s,v)=>s+v.amt,0);
+  const mkR=arr=>arr.map(v=>`<tr><td>${v.date}</td><td class="vno">${v.vno}</td><td>${v.accNo}</td><td>${v.accName}</td><td>${v.narr||'—'}</td><td class="num">${fmt(v.amt)}</td></tr>`).join('');
+  printBase('Daybook',`<p style="font-weight:700;margin:14px 0 4px;font-size:12px;text-transform:uppercase">Credit Vouchers</p><table><thead><tr><th>Date</th><th>Voucher No.</th><th>Acc No.</th><th>Account</th><th>Description</th><th class="num">Amount</th></tr></thead><tbody>${crs.length?mkR(crs):'<tr><td colspan="6" style="color:#aaa">None</td></tr>'}</tbody><tfoot><tr><td colspan="5">Total Credit</td><td class="num cr">${fmt(tCr)}</td></tr></tfoot></table><p style="font-weight:700;margin:18px 0 4px;font-size:12px;text-transform:uppercase">Debit Vouchers</p><table><thead><tr><th>Date</th><th>Voucher No.</th><th>Acc No.</th><th>Account</th><th>Description</th><th class="num">Amount</th></tr></thead><tbody>${drs.length?mkR(drs):'<tr><td colspan="6" style="color:#aaa">None</td></tr>'}</tbody><tfoot><tr><td colspan="5">Total Debit</td><td class="num dr">${fmt(tDr)}</td></tr></tfoot></table>`,'All dates');
+}
+
+function printAccounts(){
+  const mkR=arr=>arr.map(a=>{const b=runBal(a.no);return`<tr><td>${a.no}</td><td>${a.name}</td><td>${a.ref||'—'}</td><td>${a.ob?fmt(a.ob)+' '+a.obSide:'—'}</td><td class="num ${b>=0?'dr':'cr'}">${fmt(Math.abs(b))} ${b>=0?'Dr':'Cr'}</td></tr>`;}).join('');
+  printBase('Account Book',`<table><thead><tr><th>Acc No.</th><th>Name</th><th>Ref No.</th><th>Opening Bal.</th><th class="num">Running Balance</th></tr></thead><tbody>${accounts.length?mkR(accounts):'<tr><td colspan="5" style="color:#aaa">No accounts</td></tr>'}</tbody></table>`,`Total accounts: ${accounts.length}`);
+}
+
+function printLedger(){
+  const accNoRaw=document.getElementById('l-accno').value.trim()||document.getElementById('l-acc').value;
+  const accNo=parseInt(accNoRaw);if(!accNo){toast('Select an account first.',false);return;}
+  const acc=accounts.find(a=>a.no===accNo);if(!acc){toast('Account not found.',false);return;}
+  const rel=vouchers.filter(v=>v.accId===accNo).sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
+  let rb=acc.ob?(acc.obSide==='DR'?acc.ob:-acc.ob):0;let rows='';
+  if(acc.ob){const s=rb>=0?'Dr':'Cr';rows+=`<tr style="background:#fefce8"><td>${acc.obDate||'—'}</td><td>—</td><td>Opening Balance</td><td class="num"></td><td class="num"></td><td class="num">${fmt(Math.abs(rb))} ${s}</td></tr>`;}
+  rel.forEach(v=>{const dr=v.type==='DR'?v.amt:'',cr=v.type==='CR'?v.amt:'';rb+=v.type==='DR'?v.amt:-v.amt;const s=rb>=0?'Dr':'Cr';rows+=`<tr><td>${v.date}</td><td class="vno">${v.vno}</td><td>${v.narr||'—'}</td><td class="num">${dr?fmt(dr):''}</td><td class="num">${cr?fmt(cr):''}</td><td class="num ${rb>=0?'dr':'cr'}">${fmt(Math.abs(rb))} ${s}</td></tr>`;});
+  const tDr=rel.filter(v=>v.type==='DR').reduce((s,v)=>s+v.amt,0)+(acc.ob&&acc.obSide==='DR'?acc.ob:0);
+  const tCr=rel.filter(v=>v.type==='CR').reduce((s,v)=>s+v.amt,0)+(acc.ob&&acc.obSide==='CR'?acc.ob:0);const fb=tDr-tCr;
+  printBase(`Ledger — ${acc.name}`,`<table><thead><tr><th>Date</th><th>Voucher No.</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Running Balance</th></tr></thead><tbody>${rows||'<tr><td colspan="6" style="color:#aaa">No transactions</td></tr>'}</tbody><tfoot><tr><td colspan="3">Total</td><td class="num dr">${fmt(tDr)}</td><td class="num cr">${fmt(tCr)}</td><td class="num ${fb>=0?'dr':'cr'}">${fmt(Math.abs(fb))} ${fb>=0?'Dr':'Cr'}</td></tr></tfoot></table>`,`Acc No: ${acc.no}${acc.ref?' | Ref: '+acc.ref:''}`);
+}
+
+function printTrial(){
+  const month=document.getElementById('tb-month').value;
+  const filtered=month?vouchers.filter(v=>v.date.startsWith(month)):vouchers;
+  const drT={},crT={};
+  accounts.forEach(a=>{drT[a.no]=0;crT[a.no]=0;if(a.ob){if(a.obSide==='DR')drT[a.no]+=a.ob;else crT[a.no]+=a.ob;}});
+  filtered.forEach(v=>{if(v.type==='DR')drT[v.accId]=(drT[v.accId]||0)+v.amt;else crT[v.accId]=(crT[v.accId]||0)+v.amt;});
+  let gDr=0,gCr=0,rows='';
+  accounts.forEach(a=>{const dr=drT[a.no]||0,cr=crT[a.no]||0;if(!dr&&!cr)return;gDr+=dr;gCr+=cr;rows+=`<tr><td>${a.no}</td><td>${a.name}</td><td>${a.ref||'—'}</td><td class="num">${dr?fmt(dr):''}</td><td class="num">${cr?fmt(cr):''}</td></tr>`;});
+  const balanced=Math.abs(gDr-gCr)<1;
+  const ml=month?(()=>{const[y,mo]=month.split('-');return new Date(y,mo-1).toLocaleString('en-US',{month:'long',year:'numeric'});})():'All Time';
+  printBase('Trial Balance',`<table><thead><tr><th>Acc No.</th><th>Account Name</th><th>Ref No.</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>${rows||'<tr><td colspan="5" style="color:#aaa">None</td></tr>'}</tbody><tfoot><tr><td colspan="3">Grand Total</td><td class="num dr">${fmt(gDr)}</td><td class="num cr">${fmt(gCr)}</td></tr></tfoot></table><p style="margin-top:12px;font-weight:700">Status: <span style="color:${balanced?'#15803d':'#dc2626'}">${balanced?'BALANCED':'NOT BALANCED — Diff: PKR '+fmt(Math.abs(gDr-gCr))}</span></p>`,`Period: ${ml}`);
+}
+
+document.getElementById('cr-date').value=today();
+document.getElementById('dr-date').value=today();
+document.getElementById('ac-ob-date').value=today();
+
+/* ═══ SUPABASE AUTH ═══ */
+
+function showLoginScreen(){
+  document.getElementById('login-screen').style.display='flex';
+  document.getElementById('logout-btn').style.display='none';
+  document.getElementById('user-email').textContent='';
+  setTimeout(()=>document.getElementById('login-email').focus(),80);
+}
+
+function hideLoginScreen(email){
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('logout-btn').style.display='inline-block';
+  document.getElementById('user-email').textContent=email||'';
+}
+
+async function doLogin(){
+  const email=document.getElementById('login-email').value.trim();
+  const pass=document.getElementById('login-pass').value;
+  const errEl=document.getElementById('login-err');
+  const btn=document.getElementById('login-btn');
+  errEl.textContent='';
+  if(!email||!pass){errEl.textContent='Please enter email and password.';return;}
+  btn.disabled=true;btn.textContent='Signing in…';
+  const {data,error}=await sb.auth.signInWithPassword({email,password:pass});
+  btn.disabled=false;btn.textContent='Sign In';
+  if(error){errEl.textContent=error.message||'Login failed. Check email and password.';return;}
+  // success — onAuthStateChange will call init()
+}
+
+async function doLogout(){
+  await sb.auth.signOut();
+  showLoginScreen();
+}
+
+// Listen for auth state changes — single source of truth
+sb.auth.onAuthStateChange((event,session)=>{
+  if(session){
+    hideLoginScreen(session.user.email);
+    init();
+  }else{
+    showLoginScreen();
+  }
+});
+
+// keyboard support
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape')closeEdit();
+});
+
+/* ═══ BROUGHT FORWARD BALANCE ═══ */
+let bfAmt=0,bfSide='DR';
+
+async function loadBF(){
+  const {data}=await sb.from('meta').select('value').eq('key','bf_amt').single();
+  const {data:sd}=await sb.from('meta').select('value').eq('key','bf_side').single();
+  bfAmt=data?parseFloat(data.value)||0:0;
+  bfSide=sd?sd.value:'DR';
+  renderBF();
+}
+
+function renderBF(){
+  const isCR=bfSide==='CR';
+  document.getElementById('bf-display').textContent='PKR '+fmt(bfAmt);
+  document.getElementById('bf-display').className='bf-val '+(isCR?'cr':'dr');
+  document.getElementById('bf-side-display').textContent=isCR?'Cr':'Dr';
+  document.getElementById('bf-side-display').className='bf-val '+(isCR?'cr':'dr')+' ';
+  document.getElementById('bf-side-display').style.fontSize='18px';
+  // compute closing balance
+  const tCr=vouchers.filter(v=>v.type==='CR').reduce((s,v)=>s+v.amt,0);
+  const tDr=vouchers.filter(v=>v.type==='DR').reduce((s,v)=>s+v.amt,0);
+  const bfNet=bfSide==='DR'?bfAmt:-bfAmt;
+  const net=bfNet+tDr-tCr;
+  const closeSide=net>=0?'Dr':'Cr';
+  document.getElementById('bf-closing').innerHTML=
+    `Closing Balance (B/F + DR − CR): <span class="${net>=0?'dr-col':'cr-col'}" style="font-family:monospace;font-size:16px;font-weight:700">PKR ${fmt(Math.abs(net))} ${closeSide}</span>`;
+}
+
+function showBFEdit(){
+  document.getElementById('bf-amt').value=bfAmt||'';
+  document.getElementById('bf-side').value=bfSide;
+  document.getElementById('bf-edit').style.display='block';
+  document.getElementById('bf-view').style.display='none';
+  document.getElementById('bf-amt').focus();
+}
+function hideBFEdit(){
+  document.getElementById('bf-edit').style.display='none';
+  document.getElementById('bf-view').style.display='block';
+}
+async function saveBF(){
+  bfAmt=parseFloat(document.getElementById('bf-amt').value)||0;
+  bfSide=document.getElementById('bf-side').value;
+  await sb.from('meta').upsert({key:'bf_amt',value:String(bfAmt)});
+  await sb.from('meta').upsert({key:'bf_side',value:bfSide});
+  hideBFEdit();renderBF();toast('Opening balance saved.');
+}
+
+/* ═══ PATCHED INIT ═══ */
+async function init(){
+  try{
+    const [ar,vr,mr]=await Promise.all([
+      sb.from('accounts').select('*').order('acc_no'),
+      sb.from('vouchers').select('*').order('date').order('id'),
+      sb.from('meta').select('*')
+    ]);
+    if(ar.error)throw ar.error;
+    accounts=(ar.data||[]).map(a=>({id:a.acc_no,no:a.acc_no,dbId:a.id,name:a.name,ref:a.ref||'',ob:parseFloat(a.ob)||0,obSide:a.ob_side||'DR',obDate:a.ob_date||''}));
+    vouchers=(vr.data||[]).map(v=>({id:v.id,date:v.date,type:v.type,accId:v.acc_no,accName:v.acc_name,accNo:v.acc_no,vno:v.vno,amt:parseFloat(v.amt),narr:v.narr||''}));
+    const meta=mr.data||[];
+    const nm=meta.find(m=>m.key==='next_acc_no');nextAccNo=nm?parseInt(nm.value):1001;
+    if(accounts.length){const mx=Math.max(...accounts.map(a=>a.no));if(mx>=nextAccNo)nextAccNo=mx+1;}
+    const cvm=meta.find(m=>m.key==='next_cv_no'),dvm=meta.find(m=>m.key==='next_dv_no');
+    nextVno.CR=cvm?parseInt(cvm.value):1;nextVno.DR=dvm?parseInt(dvm.value):1;
+    if(vouchers.length){
+      const crs=vouchers.filter(v=>v.type==='CR'),drs=vouchers.filter(v=>v.type==='DR');
+      if(crs.length){const mx=Math.max(...crs.map(v=>{const m=v.vno.match(/\d+/);return m?parseInt(m[0]):0;}));if(mx>=nextVno.CR)nextVno.CR=mx+1;}
+      if(drs.length){const mx=Math.max(...drs.map(v=>{const m=v.vno.match(/\d+/);return m?parseInt(m[0]):0;}));if(mx>=nextVno.DR)nextVno.DR=mx+1;}
+    }
+    // BF balance
+    const bfAmtM=meta.find(m=>m.key==='bf_amt');
+    const bfSideM=meta.find(m=>m.key==='bf_side');
+    bfAmt=bfAmtM?parseFloat(bfAmtM.value)||0:0;
+    bfSide=bfSideM?bfSideM.value:'DR';
+    document.getElementById('conn-label').textContent='Cloud Connected';
+    document.getElementById('ac-no').value=nextAccNo;
+    updateVnoDisplays();
+    populateSelects();refreshAll();renderBF();
+  }catch(e){
+    document.getElementById('conn-label').textContent='Error — Run SQL first';
+    document.getElementById('conn-label').style.color='#f87171';
+    toast('DB Error: '+e.message,false);
+  }
+}
+
+// Auth state listener above handles calling init() after login
+
+</script>
+</body>
+</html>
