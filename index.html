@@ -451,10 +451,11 @@ const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZ
 const sb=supabase.createClient(SB_URL,SB_KEY);
 
 let accounts=[],vouchers=[],nextAccNo=1001,nextVno={CR:1,DR:1},editingAccNo=null;
-// FIX 3: track selected account per voucher form
 let selectedAccNo={cr:null,dr:null,e:null};
+let realtimeStarted=false;
+let appInitialised=false;
 
-const fmt=n=>Number(n).toLocaleString('en-PK',{minimumFractionDigits:0,maximumFractionDigits:0});
+const fmt=n=>Number(n).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
 const today=()=>new Date().toISOString().split('T')[0];
 const vnoStr=(t,n)=>(t==='CR'?'C':'D')+String(n).padStart(2,'0');
 
@@ -1030,8 +1031,18 @@ async function doLogout(){
   await sb.auth.signOut();showLoginScreen();
 }
 sb.auth.onAuthStateChange((event,session)=>{
-  if(session){hideLoginScreen(session.user.email);init();}
-  else{showLoginScreen();}
+  if(session){
+    hideLoginScreen(session.user.email);
+    // Only run full init on actual sign-in events, not on token refresh
+    if(!appInitialised||event==='SIGNED_IN'){
+      appInitialised=true;
+      init();
+    }
+  }else{
+    appInitialised=false;
+    realtimeStarted=false;
+    showLoginScreen();
+  }
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeEdit();});
 
@@ -1094,6 +1105,8 @@ async function init(){
 
 /* REALTIME */
 function startRealtime(){
+  if(realtimeStarted)return;
+  realtimeStarted=true;
   const mapAcc=a=>({id:a.acc_no,no:a.acc_no,dbId:a.id,name:a.name,ref:a.ref||'',ob:parseFloat(a.ob)||0,obSide:a.ob_side||'DR',obDate:a.ob_date||''});
   const mapV=v=>({id:v.id,date:v.date,type:v.type,accId:v.acc_no,accName:v.acc_name,accNo:v.acc_no,vno:v.vno,amt:parseFloat(v.amt),narr:v.narr||''});
   sb.channel('khata-live')
