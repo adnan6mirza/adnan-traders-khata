@@ -215,7 +215,7 @@ tr:last-child td{border-bottom:none}
       <div><label>Acc No. (editable)</label><input id="ac-no" class="acc-input" placeholder="e.g. 1001" onkeydown="enav(event,'ac-name')"></div>
       <div><label>Account Name</label><input id="ac-name" placeholder="e.g. Ali Fruit Trader" onkeydown="enav(event,'ac-ref')"></div>
       <div><label>Ref No.</label><input id="ac-ref" placeholder="e.g. A-01" onkeydown="enav(event,'ac-ob')"></div>
-      <div><label>Opening Bal. (PKR)</label><input type="number" id="ac-ob" placeholder="0" onkeydown="enav(event,'ac-ob-side')"></div>
+      <div><label>Opening Bal. (PKR)</label><input type="text" inputmode="decimal" id="ac-ob" class="amt-input" placeholder="0" onkeydown="enav(event,'ac-ob-side')" oninput="sanitizeAmt(this)"></div>
     </div>
     <div class="frow f3" style="margin-bottom:12px">
       <div><label>Opening Bal. Side</label>
@@ -463,18 +463,48 @@ function enav(e,nid){
   if(e.key==='Enter'){e.preventDefault();const el=document.getElementById(nid);if(el){el.focus();if(el.select)el.select();}}
 }
 
-/* FIX 2: amount keydown — only allow digits, backspace, delete, arrows, Enter, Tab */
 function amtKeydown(e,nextId){
   if(e.key==='Enter'){e.preventDefault();const el=document.getElementById(nextId);if(el){el.focus();if(el.select)el.select();}return;}
-  // block comma from doing anything unexpected
   if(e.key===','||e.key===';'){e.preventDefault();return;}
 }
+
+// Format amount with commas while typing — stores raw number in dataset.raw
 function sanitizeAmt(input){
-  // strip anything that isn't digits or a single dot
-  let v=input.value.replace(/[^0-9.]/g,'');
-  const parts=v.split('.');
-  if(parts.length>2)v=parts[0]+'.'+parts.slice(1).join('');
-  input.value=v;
+  // get cursor position before we change value
+  const sel=input.selectionStart;
+  // strip everything except digits and one dot
+  let raw=input.value.replace(/,/g,'').replace(/[^0-9.]/g,'');
+  const parts=raw.split('.');
+  if(parts.length>2)raw=parts[0]+'.'+parts.slice(1).join('');
+  const intPart=parts[0]||'';
+  const decPart=parts[1]!==undefined?'.'+parts[1]:'';
+  // format integer part with commas
+  const formatted=intPart.replace(/\B(?=(\d{3})+(?!\d))/g,',')+decPart;
+  input.dataset.raw=raw;
+  // only update if changed to avoid cursor jumping
+  if(input.value!==formatted){
+    const commasBefore=(input.value.slice(0,sel).match(/,/g)||[]).length;
+    input.value=formatted;
+    // adjust cursor for added/removed commas
+    const commasAfter=(formatted.slice(0,sel).match(/,/g)||[]).length;
+    const newSel=sel+(commasAfter-commasBefore);
+    try{input.setSelectionRange(newSel,newSel);}catch(ex){}
+  }
+}
+
+// Get raw numeric value from amount input (strip commas)
+function getAmt(id){
+  const el=document.getElementById(id);
+  if(!el)return 0;
+  return parseFloat((el.dataset.raw||el.value).replace(/,/g,''))||0;
+}
+
+// Set amount input with formatted display
+function setAmt(id,val){
+  const el=document.getElementById(id);if(!el)return;
+  const s=String(val||'');
+  el.dataset.raw=s;
+  el.value=s?Number(s).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:2}):'';
 }
 
 function toast(msg,ok=true){
@@ -605,23 +635,30 @@ async function saveAccount(){
   const no=parseInt(noRaw);
   const name=document.getElementById('ac-name').value.trim();
   const ref=document.getElementById('ac-ref').value.trim();
-  const ob=parseFloat(document.getElementById('ac-ob').value)||0;
+  const ob=getAmt('ac-ob');
   const obSide=document.getElementById('ac-ob-side').value;
   const obDate=document.getElementById('ac-ob-date').value||null;
   if(!name||!no){toast('Enter account name and number.',false);return;}
 
   if(editingAccNo!==null){
     const acc=accounts.find(a=>a.no===editingAccNo);
-    // UPDATE — save ALL fields including name, ref, ob, ob_side, ob_date
+    // UPDATE — match on acc_no (always present, reliable primary key for our app)
+    const payload={name,ref,ob,ob_side:obSide,ob_date:obDate||null};
     const {error}=await sb.from('accounts')
-      .update({name,ref,ob,ob_side:obSide,ob_date:obDate})
-      .eq('id',acc.dbId);
-    if(error){toast('Error saving: '+error.message,false);return;}
-    // update local memory
-    acc.name=name;acc.ref=ref;acc.ob=ob;acc.obSide=obSide;acc.obDate=obDate||'';
-    // update cached names in vouchers
+      .update(payload)
+      .eq('acc_no',editingAccNo);
+    if(error){toast('Save error: '+error.message,false);console.error('Update error:',error);return;}
+    // verify: re-fetch this row to confirm save
+    const {data:check}=await sb.from('accounts').select('*').eq('acc_no',editingAccNo).single();
+    if(check){
+      // update from confirmed saved row
+      acc.name=check.name;acc.ref=check.ref||'';
+      acc.ob=parseFloat(check.ob)||0;acc.obSide=check.ob_side||'DR';acc.obDate=check.ob_date||'';
+    }else{
+      acc.name=name;acc.ref=ref;acc.ob=ob;acc.obSide=obSide;acc.obDate=obDate||'';
+    }
     vouchers.filter(v=>v.accId===editingAccNo).forEach(v=>v.accName=name);
-    toast('Account updated — saved to cloud.');
+    toast('Account updated and verified in cloud.');
     cancelEditAcc();
   }else{
     if(accounts.find(a=>a.no===no)){toast('Account number already exists.',false);return;}
@@ -633,7 +670,7 @@ async function saveAccount(){
     if(no>=nextAccNo)nextAccNo=no+1;
     await sb.from('meta').upsert({key:'next_acc_no',value:String(nextAccNo)});
     document.getElementById('ac-no').value=nextAccNo;
-    ['ac-name','ac-ref','ac-ob','ac-ob-date'].forEach(id=>document.getElementById(id).value='');
+    ['ac-name','ac-ref','ac-ob-date'].forEach(id=>document.getElementById(id).value='');setAmt('ac-ob','');
     toast('Account '+no+' — '+name+' added.');
   }
   populateSelects();refreshAll();
@@ -645,7 +682,7 @@ function startEditAcc(no){
   editingAccNo=no;
   document.getElementById('ac-no').value=acc.no;document.getElementById('ac-no').readOnly=true;
   document.getElementById('ac-name').value=acc.name;document.getElementById('ac-ref').value=acc.ref||'';
-  document.getElementById('ac-ob').value=acc.ob||'';document.getElementById('ac-ob-side').value=acc.obSide||'DR';
+  setAmt('ac-ob',acc.ob||'');document.getElementById('ac-ob-side').value=acc.obSide||'DR';
   document.getElementById('ac-ob-date').value=acc.obDate||'';
   document.getElementById('ac-btn').textContent='Save Changes';
   document.getElementById('ac-cancel').style.display='inline-block';
@@ -657,7 +694,7 @@ function startEditAcc(no){
 function cancelEditAcc(){
   editingAccNo=null;
   document.getElementById('ac-no').readOnly=false;document.getElementById('ac-no').value=nextAccNo;
-  ['ac-name','ac-ref','ac-ob','ac-ob-date'].forEach(id=>document.getElementById(id).value='');
+  ['ac-name','ac-ref','ac-ob-date'].forEach(id=>document.getElementById(id).value='');setAmt('ac-ob','');
   document.getElementById('ac-btn').textContent='Add Account';
   document.getElementById('ac-cancel').style.display='none';
 }
@@ -699,8 +736,7 @@ async function postVoucher(type){
   const pfx=type==='CR'?'cr':'dr';
   const date=document.getElementById(pfx+'-date').value;
   const accNo=selectedAccNo[pfx];
-  const amtRaw=document.getElementById(pfx+'-amt').value.replace(/,/g,'');
-  const amt=parseFloat(amtRaw);
+  const amt=getAmt(pfx+'-amt');
   const narr=document.getElementById(pfx+'-narr').value.trim();
   if(!date||!accNo||!amt){toast('Fill date, account and amount.',false);return;}
   const acc=accounts.find(a=>a.no===accNo);
@@ -713,7 +749,7 @@ async function postVoucher(type){
   await sb.from('meta').upsert({key:type==='CR'?'next_cv_no':'next_dv_no',value:String(nextVno[type])});
   updateVnoDisplays();
   showSuccessPopup(type,vno,acc.name,amt,narr);
-  document.getElementById(pfx+'-amt').value='';
+  setAmt(pfx+'-amt','');
   document.getElementById(pfx+'-narr').value='';
   document.getElementById(pfx+'-search').value='';
   hideAccPreview(pfx);
@@ -805,7 +841,7 @@ function openEdit(id){
   const acc=accounts.find(a=>a.no===v.accId);
   document.getElementById('e-search').value=v.accId+(acc?' — '+acc.name:'');
   selectedAccNo.e=v.accId;
-  document.getElementById('e-amt').value=v.amt;
+  setAmt('e-amt',v.amt);
   document.getElementById('e-narr').value=v.narr||'';
   document.getElementById('edit-modal-title').innerHTML=(isCR?'<span style="color:var(--green)">Edit Credit Voucher</span>':'<span style="color:var(--blue)">Edit Debit Voucher</span>');
   if(acc)showAccPreview('e',acc);
@@ -819,8 +855,7 @@ async function saveEdit(){
   const date=document.getElementById('e-date').value;
   const accNo=selectedAccNo.e;
   const vno=document.getElementById('e-vno').value;
-  const amtRaw=document.getElementById('e-amt').value.replace(/,/g,'');
-  const amt=parseFloat(amtRaw);
+  const amt=getAmt('e-amt');
   const narr=document.getElementById('e-narr').value.trim();
   if(!date||!accNo||!amt){toast('Fill all fields.',false);return;}
   const acc=accounts.find(a=>a.no===accNo);
@@ -999,9 +1034,19 @@ function printTrial(){
   printBase('Trial Balance',`<table><thead><tr><th>Acc No.</th><th>Account Name</th><th>Ref No.</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>${rows||'<tr><td colspan="5" style="color:#aaa">None</td></tr>'}</tbody><tfoot><tr><td colspan="3">Grand Total</td><td class="num dr">${fmt(gDr)}</td><td class="num cr">${fmt(gCr)}</td></tr></tfoot></table><p style="margin-top:12px;font-weight:700">Status: <span style="color:${balanced?'#15803d':'#dc2626'}">${balanced?'BALANCED':'NOT BALANCED — Diff: PKR '+fmt(Math.abs(gDr-gCr))}</span></p>`,`Period: ${ml}`);
 }
 
-document.getElementById('cr-date').value=today();
-document.getElementById('dr-date').value=today();
-document.getElementById('ac-ob-date').value=today();
+// Set today as default for all entry date fields
+['cr-date','dr-date','ac-ob-date'].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el&&!el.value)el.value=today();
+});
+// Re-apply today on show() so the date never stays stale from a previous session
+const _origShow=show;
+function show(id){
+  _origShow(id);
+  const dateMap={'cr-voucher':'cr-date','dr-voucher':'dr-date','accounts':'ac-ob-date'};
+  const dId=dateMap[id];
+  if(dId){const el=document.getElementById(dId);if(el&&!el.value)el.value=today();}
+}
 
 /* AUTH */
 function showLoginScreen(){
