@@ -343,7 +343,7 @@ tr:last-child td{border-bottom:none}
     <div id="bf-edit" style="display:none">
       <div style="font-size:13px;color:#93c5fd;margin-bottom:8px">Set the opening brought-forward balance:</div>
       <div class="bf-input-row">
-        <div><label style="color:#93c5fd;font-size:11px">Amount (PKR)</label><input type="number" id="bf-amt" placeholder="0" onkeydown="enav(event,'bf-side')"></div>
+        <div><label style="color:#93c5fd;font-size:11px">Amount (PKR)</label><input type="text" inputmode="decimal" id="bf-amt" placeholder="0" onkeydown="enav(event,'bf-side')" oninput="sanitizeAmt(this)"></div>
         <div><label style="color:#93c5fd;font-size:11px">Side</label>
           <select id="bf-side" onkeydown="if(event.key==='Enter')saveBF()"><option value="DR">Debit (Dr)</option><option value="CR">Credit (Cr)</option></select>
         </div>
@@ -976,6 +976,9 @@ function show(id){
   document.getElementById(id).classList.add('active');
   const map={'accounts':0,'cr-voucher':1,'dr-voucher':2,'daybook':3,'ledger':4,'find-voucher':5,'trial':6};
   document.querySelectorAll('.nav button')[map[id]].classList.add('active');
+  // Always reset relevant date input to today when opening that tab
+  const dateMap={'cr-voucher':'cr-date','dr-voucher':'dr-date','accounts':'ac-ob-date'};
+  if(dateMap[id]){const el=document.getElementById(dateMap[id]);if(el)el.value=today();}
   if(id==='trial'){buildMonthOptions();renderTrial();}
   if(id==='ledger')renderLedger();
   if(id==='daybook')renderDaybook();
@@ -1039,14 +1042,7 @@ function printTrial(){
   const el=document.getElementById(id);
   if(el&&!el.value)el.value=today();
 });
-// Re-apply today on show() so the date never stays stale from a previous session
-const _origShow=show;
-function show(id){
-  _origShow(id);
-  const dateMap={'cr-voucher':'cr-date','dr-voucher':'dr-date','accounts':'ac-ob-date'};
-  const dId=dateMap[id];
-  if(dId){const el=document.getElementById(dId);if(el&&!el.value)el.value=today();}
-}
+
 
 /* AUTH */
 function showLoginScreen(){
@@ -1105,10 +1101,10 @@ function renderBF(){
   const bfNet=bfSide==='DR'?bfAmt:-bfAmt;const net=bfNet+tDr-tCr;const closeSide=net>=0?'Dr':'Cr';
   document.getElementById('bf-closing').innerHTML=`Closing Balance (B/F + DR − CR): <span class="${net>=0?'dr-col':'cr-col'}" style="font-family:monospace;font-size:16px;font-weight:700">PKR ${fmt(Math.abs(net))} ${closeSide}</span>`;
 }
-function showBFEdit(){document.getElementById('bf-amt').value=bfAmt||'';document.getElementById('bf-side').value=bfSide;document.getElementById('bf-edit').style.display='block';document.getElementById('bf-view').style.display='none';document.getElementById('bf-amt').focus();}
+function showBFEdit(){setAmt('bf-amt',bfAmt||'');document.getElementById('bf-side').value=bfSide;document.getElementById('bf-edit').style.display='block';document.getElementById('bf-view').style.display='none';document.getElementById('bf-amt').focus();}
 function hideBFEdit(){document.getElementById('bf-edit').style.display='none';document.getElementById('bf-view').style.display='block';}
 async function saveBF(){
-  bfAmt=parseFloat(document.getElementById('bf-amt').value)||0;bfSide=document.getElementById('bf-side').value;
+  bfAmt=getAmt('bf-amt');bfSide=document.getElementById('bf-side').value;
   await sb.from('meta').upsert({key:'bf_amt',value:String(bfAmt)});
   await sb.from('meta').upsert({key:'bf_side',value:bfSide});
   hideBFEdit();renderBF();toast('Opening balance saved.');
