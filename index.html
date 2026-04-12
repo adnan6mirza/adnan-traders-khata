@@ -452,7 +452,7 @@ const sb=supabase.createClient(SB_URL,SB_KEY);
 
 let accounts=[],vouchers=[],nextAccNo=1001,nextVno={CR:1,DR:1},editingAccNo=null;
 let selectedAccNo={cr:null,dr:null,e:null};
-let realtimeStarted=false;
+let realtimeChannel=null;  // holds the actual channel object for cleanup
 let appInitialised=false;
 
 const fmt=n=>Number(n).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
@@ -1072,16 +1072,23 @@ async function doLogout(){
   await sb.auth.signOut();showLoginScreen();
 }
 sb.auth.onAuthStateChange((event,session)=>{
+  // Events fired by Supabase: INITIAL_SESSION, SIGNED_IN, TOKEN_REFRESHED, SIGNED_OUT
+  // We only want to run init() on first arrival (INITIAL_SESSION with session)
+  // or when user actively signs in (SIGNED_IN after being signed out)
   if(session){
     hideLoginScreen(session.user.email);
-    // Only run full init on actual sign-in events, not on token refresh
-    if(!appInitialised||event==='SIGNED_IN'){
+    if(!appInitialised){
       appInitialised=true;
       init();
     }
+    // TOKEN_REFRESHED: session is still valid, do nothing extra
   }else{
+    // SIGNED_OUT: clean up everything
     appInitialised=false;
-    realtimeStarted=false;
+    if(realtimeChannel){
+      sb.removeChannel(realtimeChannel);
+      realtimeChannel=null;
+    }
     showLoginScreen();
   }
 });
@@ -1146,11 +1153,14 @@ async function init(){
 
 /* REALTIME */
 function startRealtime(){
-  if(realtimeStarted)return;
-  realtimeStarted=true;
+  // Remove any existing channel before creating a new one
+  if(realtimeChannel){
+    sb.removeChannel(realtimeChannel);
+    realtimeChannel=null;
+  }
   const mapAcc=a=>({id:a.acc_no,no:a.acc_no,dbId:a.id,name:a.name,ref:a.ref||'',ob:parseFloat(a.ob)||0,obSide:a.ob_side||'DR',obDate:a.ob_date||''});
   const mapV=v=>({id:v.id,date:v.date,type:v.type,accId:v.acc_no,accName:v.acc_name,accNo:v.acc_no,vno:v.vno,amt:parseFloat(v.amt),narr:v.narr||''});
-  sb.channel('khata-live')
+  realtimeChannel=sb.channel('khata-live')
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'accounts'},p=>{if(!accounts.find(x=>x.no===p.new.acc_no)){accounts.push(mapAcc(p.new));populateSelects();refreshAll();}})
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'accounts'},p=>{
       const idx=accounts.findIndex(x=>x.dbId===p.new.id);
