@@ -224,7 +224,7 @@ tr:last-child td{border-bottom:none}
           <option value="CR">Credit (Cr)</option>
         </select>
       </div>
-      <div><label>Opening Bal. Date</label><input type="date" id="ac-ob-date" onkeydown="if(event.key==='Enter'){saveAccount()}"></div>
+      <div><label>Opening Bal. Date</label><input type="date" id="ac-ob-date" onkeydown="if(event.key==='Enter'&&!submitting){saveAccount()}"></div>
       <div style="padding-top:18px">
         <button class="btn btn-navy" onclick="saveAccount()" id="ac-btn">Add Account</button>
         <button class="btn btn-sm" onclick="cancelEditAcc()" id="ac-cancel" style="display:none;margin-left:6px">Cancel</button>
@@ -265,9 +265,9 @@ tr:last-child td{border-bottom:none}
         <!-- FIX 2: type=text with inputmode=decimal prevents comma-as-tab -->
         <input type="text" inputmode="decimal" id="cr-amt" class="amt-input" placeholder="0" onkeydown="amtKeydown(event,'cr-narr')" oninput="sanitizeAmt(this)">
       </div>
-      <div><label>Description / Narration</label><input id="cr-narr" placeholder="e.g. received from buyer" onkeydown="if(event.key==='Enter'){postVoucher('CR')}"></div>
+      <div><label>Description / Narration</label><input id="cr-narr" placeholder="e.g. received from buyer" onkeydown="if(event.key==='Enter'&&!submitting){postVoucher('CR')}"></div>
     </div>
-    <button class="btn btn-green" onclick="postVoucher('CR')">Post Credit Voucher &nbsp;(Enter)</button>
+    <button class="btn btn-green" id="cr-submit-btn" onclick="postVoucher('CR')">Post Credit Voucher &nbsp;(Enter)</button>
     <p class="hint" style="margin-top:8px">Type account number or name — arrow keys to pick, Enter to select. Press Enter on Description to post.</p>
   </div>
   <div class="filter-row" style="margin-top:4px">
@@ -307,9 +307,9 @@ tr:last-child td{border-bottom:none}
         <label>Amount (PKR)</label>
         <input type="text" inputmode="decimal" id="dr-amt" class="amt-input" placeholder="0" onkeydown="amtKeydown(event,'dr-narr')" oninput="sanitizeAmt(this)">
       </div>
-      <div><label>Description / Narration</label><input id="dr-narr" placeholder="e.g. paid to farmer" onkeydown="if(event.key==='Enter'){postVoucher('DR')}"></div>
+      <div><label>Description / Narration</label><input id="dr-narr" placeholder="e.g. paid to farmer" onkeydown="if(event.key==='Enter'&&!submitting){postVoucher('DR')}"></div>
     </div>
-    <button class="btn btn-blue" onclick="postVoucher('DR')">Post Debit Voucher &nbsp;(Enter)</button>
+    <button class="btn btn-blue" id="dr-submit-btn" onclick="postVoucher('DR')">Post Debit Voucher &nbsp;(Enter)</button>
     <p class="hint" style="margin-top:8px">Type account number or name — arrow keys to pick, Enter to select. Press Enter on Description to post.</p>
   </div>
   <div class="filter-row" style="margin-top:4px">
@@ -433,11 +433,11 @@ tr:last-child td{border-bottom:none}
     </div>
     <div class="frow f2">
       <div><label>Amount (PKR)</label><input type="text" inputmode="decimal" id="e-amt" class="amt-input" onkeydown="amtKeydown(event,'e-narr')" oninput="sanitizeAmt(this)"></div>
-      <div><label>Description</label><input id="e-narr" onkeydown="if(event.key==='Enter'){saveEdit()}"></div>
+      <div><label>Description</label><input id="e-narr" onkeydown="if(event.key==='Enter'&&!submitting){saveEdit()}"></div>
     </div>
     <div class="modal-btns">
       <button class="btn-sm" onclick="closeEdit()">Cancel (Esc)</button>
-      <button class="btn btn-navy" onclick="saveEdit()">Save Changes</button>
+      <button class="btn btn-navy" id="edit-save-btn" onclick="saveEdit()">Save Changes</button>
     </div>
   </div>
 </div>
@@ -452,8 +452,9 @@ const sb=supabase.createClient(SB_URL,SB_KEY);
 
 let accounts=[],vouchers=[],nextAccNo=1001,nextVno={CR:1,DR:1},editingAccNo=null;
 let selectedAccNo={cr:null,dr:null,e:null};
-let realtimeChannel=null;  // holds the actual channel object for cleanup
+let realtimeChannel=null;
 let appInitialised=false;
+let submitting=false;  // global submit lock — prevents any double submission
 
 const fmt=n=>Number(n).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
 const today=()=>new Date().toISOString().split('T')[0];
@@ -510,6 +511,42 @@ function setAmt(id,val){
 function toast(msg,ok=true){
   const d=document.createElement('div');d.className='toast '+(ok?'toast-ok':'toast-err');d.textContent=msg;
   document.body.appendChild(d);setTimeout(()=>d.remove(),2800);
+}
+
+// Alert beep using Web Audio API — no external file needed
+function beep(type='success'){
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    const osc=ctx.createOscillator();
+    const gain=ctx.createGain();
+    osc.connect(gain);gain.connect(ctx.destination);
+    if(type==='success'){
+      // Two-tone ascending beep — pleasant confirm sound
+      osc.frequency.setValueAtTime(880,ctx.currentTime);
+      osc.frequency.setValueAtTime(1100,ctx.currentTime+0.08);
+      gain.gain.setValueAtTime(0.18,ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.22);
+      osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.22);
+    }else{
+      // Single low tone — error/blocked
+      osc.frequency.setValueAtTime(220,ctx.currentTime);
+      gain.gain.setValueAtTime(0.15,ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.18);
+      osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.18);
+    }
+  }catch(ex){}
+}
+
+// Lock a button during async submission — prevents double clicks and Enter spam
+function lockBtn(btnId,loadingText='Saving…'){
+  const btn=document.getElementById(btnId);
+  if(btn){btn.disabled=true;btn._origText=btn.textContent;btn.textContent=loadingText;btn.style.opacity='0.65';}
+  submitting=true;
+}
+function unlockBtn(btnId){
+  const btn=document.getElementById(btnId);
+  if(btn){btn.disabled=false;btn.textContent=btn._origText||btn.textContent;btn.style.opacity='';}
+  submitting=false;
 }
 
 function showSuccessPopup(type,vno,accName,amt,narr){
@@ -631,6 +668,8 @@ function runBal(accNo){
 
 /* FIX 1: saveAccount — include acc_no in UPDATE too, and fix the payload */
 async function saveAccount(){
+  if(submitting){beep('error');return;}
+  lockBtn('ac-btn','Saving…');
   const noRaw=document.getElementById('ac-no').value.trim();
   const no=parseInt(noRaw);
   const name=document.getElementById('ac-name').value.trim();
@@ -638,7 +677,7 @@ async function saveAccount(){
   const ob=getAmt('ac-ob');
   const obSide=document.getElementById('ac-ob-side').value;
   const obDate=document.getElementById('ac-ob-date').value||null;
-  if(!name||!no){toast('Enter account name and number.',false);return;}
+  if(!name||!no){toast('Enter account name and number.',false);beep('error');unlockBtn('ac-btn');return;}
 
   if(editingAccNo!==null){
     const acc=accounts.find(a=>a.no===editingAccNo);
@@ -647,7 +686,7 @@ async function saveAccount(){
     const {error}=await sb.from('accounts')
       .update(payload)
       .eq('acc_no',editingAccNo);
-    if(error){toast('Save error: '+error.message,false);console.error('Update error:',error);return;}
+    if(error){toast('Save error: '+error.message,false);console.error('Update error:',error);beep('error');unlockBtn('ac-btn');return;}
     // verify: re-fetch this row to confirm save
     const {data:check}=await sb.from('accounts').select('*').eq('acc_no',editingAccNo).single();
     if(check){
@@ -658,20 +697,24 @@ async function saveAccount(){
       acc.name=name;acc.ref=ref;acc.ob=ob;acc.obSide=obSide;acc.obDate=obDate||'';
     }
     vouchers.filter(v=>v.accId===editingAccNo).forEach(v=>v.accName=name);
+    beep('success');
     toast('Account updated and verified in cloud.');
     cancelEditAcc();
+    unlockBtn('ac-btn');
   }else{
-    if(accounts.find(a=>a.no===no)){toast('Account number already exists.',false);return;}
+    if(accounts.find(a=>a.no===no)){toast('Account number already exists.',false);beep('error');unlockBtn('ac-btn');return;}
     const {data,error}=await sb.from('accounts')
       .insert({acc_no:no,name,type:'General',ref,ob,ob_side:obSide,ob_date:obDate})
       .select().single();
-    if(error){toast('Error: '+error.message,false);return;}
+    if(error){toast('Error: '+error.message,false);beep('error');unlockBtn('ac-btn');return;}
     accounts.push({id:no,no,dbId:data.id,name,ref,ob,obSide,obDate:obDate||''});
     if(no>=nextAccNo)nextAccNo=no+1;
     await sb.from('meta').upsert({key:'next_acc_no',value:String(nextAccNo)});
     document.getElementById('ac-no').value=nextAccNo;
     ['ac-name','ac-ref','ac-ob-date'].forEach(id=>document.getElementById(id).value='');setAmt('ac-ob','');
+    beep('success');
     toast('Account '+no+' — '+name+' added.');
+    unlockBtn('ac-btn');
   }
   populateSelects();refreshAll();
   document.getElementById('ac-name').focus();
@@ -733,29 +776,40 @@ function populateSelects(){
 }
 
 async function postVoucher(type){
+  // Hard lock — if already submitting, ignore all extra Enter presses / clicks
+  if(submitting){beep('error');return;}
   const pfx=type==='CR'?'cr':'dr';
+  const btnId=type==='CR'?'cr-submit-btn':'dr-submit-btn';
   const date=document.getElementById(pfx+'-date').value;
   const accNo=selectedAccNo[pfx];
   const amt=getAmt(pfx+'-amt');
   const narr=document.getElementById(pfx+'-narr').value.trim();
-  if(!date||!accNo||!amt){toast('Fill date, account and amount.',false);return;}
+  if(!date||!accNo||!amt){toast('Fill date, account and amount.',false);beep('error');return;}
   const acc=accounts.find(a=>a.no===accNo);
-  if(!acc){toast('Account not found.',false);return;}
+  if(!acc){toast('Account not found.',false);beep('error');return;}
+  // Lock immediately before any async work
+  lockBtn(btnId,'Posting…');
   const vno=vnoStr(type,nextVno[type]);
-  const {data,error}=await sb.from('vouchers').insert({date,type,acc_id:acc.dbId,acc_name:acc.name,acc_no:accNo,vno,amt,narr}).select().single();
-  if(error){toast('Error: '+error.message,false);return;}
-  vouchers.push({id:data.id,date,type,accId:accNo,accName:acc.name,accNo,vno,amt,narr});
-  nextVno[type]++;
-  await sb.from('meta').upsert({key:type==='CR'?'next_cv_no':'next_dv_no',value:String(nextVno[type])});
-  updateVnoDisplays();
-  showSuccessPopup(type,vno,acc.name,amt,narr);
-  setAmt(pfx+'-amt','');
-  document.getElementById(pfx+'-narr').value='';
-  document.getElementById(pfx+'-search').value='';
-  hideAccPreview(pfx);
-  selectedAccNo[pfx]=null;
-  refreshAll();
-  setTimeout(()=>document.getElementById(pfx+'-search').focus(),200);
+  try{
+    const {data,error}=await sb.from('vouchers').insert({date,type,acc_id:acc.dbId,acc_name:acc.name,acc_no:accNo,vno,amt,narr}).select().single();
+    if(error){toast('Error: '+error.message,false);beep('error');unlockBtn(btnId);return;}
+    vouchers.push({id:data.id,date,type,accId:accNo,accName:acc.name,accNo,vno,amt,narr});
+    nextVno[type]++;
+    await sb.from('meta').upsert({key:type==='CR'?'next_cv_no':'next_dv_no',value:String(nextVno[type])});
+    updateVnoDisplays();
+    beep('success');
+    showSuccessPopup(type,vno,acc.name,amt,narr);
+    setAmt(pfx+'-amt','');
+    document.getElementById(pfx+'-narr').value='';
+    document.getElementById(pfx+'-search').value='';
+    hideAccPreview(pfx);
+    selectedAccNo[pfx]=null;
+    refreshAll();
+    setTimeout(()=>document.getElementById(pfx+'-search').focus(),200);
+  }finally{
+    // Always unlock — even if error — so user can try again
+    unlockBtn(btnId);
+  }
 }
 
 function vRow(v,showActions=true){
@@ -851,20 +905,24 @@ function openEdit(id){
 function closeEdit(){document.getElementById('edit-modal').style.display='none';}
 
 async function saveEdit(){
+  if(submitting){beep('error');return;}
+  lockBtn('edit-save-btn','Saving…');
   const id=parseInt(document.getElementById('e-id').value);
   const date=document.getElementById('e-date').value;
   const accNo=selectedAccNo.e;
   const vno=document.getElementById('e-vno').value;
   const amt=getAmt('e-amt');
   const narr=document.getElementById('e-narr').value.trim();
-  if(!date||!accNo||!amt){toast('Fill all fields.',false);return;}
+  if(!date||!accNo||!amt){toast('Fill all fields.',false);beep('error');unlockBtn('edit-save-btn');return;}
   const acc=accounts.find(a=>a.no===accNo);
-  if(!acc){toast('Account not found.',false);return;}
+  if(!acc){toast('Account not found.',false);beep('error');unlockBtn('edit-save-btn');return;}
   const v=vouchers.find(x=>x.id===id);
   const {error}=await sb.from('vouchers').update({date,acc_id:acc.dbId,acc_name:acc.name,acc_no:accNo,vno,amt,narr}).eq('id',id);
-  if(error){toast('Error: '+error.message,false);return;}
+  if(error){toast('Error: '+error.message,false);beep('error');unlockBtn('edit-save-btn');return;}
   Object.assign(v,{date,accId:accNo,accName:acc.name,accNo,vno,amt,narr});
+  beep('success');
   closeEdit();toast('Voucher updated — all books refreshed.');refreshAll();
+  unlockBtn('edit-save-btn');
 }
 
 function searchVoucher(){
