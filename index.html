@@ -45,9 +45,9 @@ label{font-size:11px;color:var(--slate);display:block;margin-bottom:3px;font-wei
 input,select,textarea{width:100%;padding:9px 11px;border:1.5px solid #cbd5e1;border-radius:7px;background:var(--white);color:#111;font-size:14px;font-family:Arial,sans-serif;transition:border 0.12s,box-shadow 0.12s}
 input:focus,select:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,0.12)}
 input[readonly]{background:#f8fafc;color:var(--slate);border-style:dashed;cursor:default}
-input.acc-input{font-family:monospace;font-weight:700;font-size:15px;letter-spacing:0.05em}
+input.acc-input{font-family:'Trebuchet MS',Arial,sans-serif;font-weight:700;font-size:15px;letter-spacing:0.04em}
 /* FIX 2: amount input — prevent comma/period from triggering tab behaviour */
-input.amt-input{font-size:18px;font-weight:700;font-family:monospace;letter-spacing:0.02em}
+input.amt-input{font-size:18px;font-weight:700;font-family:'Trebuchet MS',Arial,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:0.02em}
 .hint{font-size:11px;color:var(--slate-light);margin-top:5px}
 .btn{padding:9px 22px;border-radius:7px;border:none;font-size:13px;font-weight:700;cursor:pointer;transition:all 0.12s}
 .btn-navy{background:var(--navy);color:#fff}.btn-navy:hover{background:var(--navy2)}
@@ -66,10 +66,16 @@ tr:hover td{background:#fafbff}
 tr:last-child td{border-bottom:none}
 .cr-col{color:var(--green);font-weight:700}
 .dr-col{color:var(--blue);font-weight:700}
-.num{text-align:right;font-family:monospace}
+.num{text-align:right;font-family:'Trebuchet MS',Arial,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:0.02em}
 .empty{color:var(--slate-light);text-align:center;padding:2rem;font-size:13px}
 .tfoot-row td{font-weight:700;border-top:2px solid #cbd5e1;background:#f8fafc}
-.acc-num{font-family:monospace;font-size:13px;font-weight:700;color:var(--navy3)}
+/* Clean numeric font — no slashed zeros, clear digits */
+@font-face{
+  font-family:'KhataNum';
+  src:local('Arial'),local('Helvetica Neue');
+  font-display:swap;
+}
+.acc-num{font-family:'Trebuchet MS',Arial,sans-serif;font-size:13px;font-weight:700;color:var(--navy3);letter-spacing:0.03em}
 .tab-wrap{overflow-x:auto}
 .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700}
 .b-cr{background:var(--green-bg);color:var(--green)}
@@ -454,7 +460,9 @@ let accounts=[],vouchers=[],nextAccNo=1001,nextVno={CR:1,DR:1},editingAccNo=null
 let selectedAccNo={cr:null,dr:null,e:null};
 let realtimeChannel=null;
 let appInitialised=false;
-let submitting=false;  // global submit lock — prevents any double submission
+let submitting=false;
+const ownIds=new Set();     // voucher IDs inserted by THIS client — realtime skips these
+const ownAccIds=new Set();  // account IDs inserted by THIS client — realtime skips these
 
 const fmt=n=>Number(n).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
 const today=()=>new Date().toISOString().split('T')[0];
@@ -517,22 +525,33 @@ function toast(msg,ok=true){
 function beep(type='success'){
   try{
     const ctx=new(window.AudioContext||window.webkitAudioContext)();
-    const osc=ctx.createOscillator();
-    const gain=ctx.createGain();
-    osc.connect(gain);gain.connect(ctx.destination);
     if(type==='success'){
-      // Two-tone ascending beep — pleasant confirm sound
-      osc.frequency.setValueAtTime(880,ctx.currentTime);
-      osc.frequency.setValueAtTime(1100,ctx.currentTime+0.08);
-      gain.gain.setValueAtTime(0.18,ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.22);
-      osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.22);
+      // Sharp double-beep — like a cash register / POS terminal
+      // Beep 1
+      const o1=ctx.createOscillator(),g1=ctx.createGain();
+      o1.connect(g1);g1.connect(ctx.destination);
+      o1.type='square';  // square wave = sharper, louder perceived sound
+      o1.frequency.setValueAtTime(1400,ctx.currentTime);
+      g1.gain.setValueAtTime(0.55,ctx.currentTime);
+      g1.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.12);
+      o1.start(ctx.currentTime);o1.stop(ctx.currentTime+0.12);
+      // Beep 2 (slightly higher — ascending confirm)
+      const o2=ctx.createOscillator(),g2=ctx.createGain();
+      o2.connect(g2);g2.connect(ctx.destination);
+      o2.type='square';
+      o2.frequency.setValueAtTime(1800,ctx.currentTime+0.15);
+      g2.gain.setValueAtTime(0.55,ctx.currentTime+0.15);
+      g2.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.30);
+      o2.start(ctx.currentTime+0.15);o2.stop(ctx.currentTime+0.30);
     }else{
-      // Single low tone — error/blocked
-      osc.frequency.setValueAtTime(220,ctx.currentTime);
-      gain.gain.setValueAtTime(0.15,ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.18);
-      osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.18);
+      // Error — low buzzing tone
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.connect(g);g.connect(ctx.destination);
+      o.type='sawtooth';
+      o.frequency.setValueAtTime(180,ctx.currentTime);
+      g.gain.setValueAtTime(0.4,ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.25);
+      o.start(ctx.currentTime);o.stop(ctx.currentTime+0.25);
     }
   }catch(ex){}
 }
@@ -707,6 +726,7 @@ async function saveAccount(){
       .insert({acc_no:no,name,type:'General',ref,ob,ob_side:obSide,ob_date:obDate})
       .select().single();
     if(error){toast('Error: '+error.message,false);beep('error');unlockBtn('ac-btn');return;}
+    ownAccIds.add(data.id);
     accounts.push({id:no,no,dbId:data.id,name,ref,ob,obSide,obDate:obDate||''});
     if(no>=nextAccNo)nextAccNo=no+1;
     await sb.from('meta').upsert({key:'next_acc_no',value:String(nextAccNo)});
@@ -793,7 +813,9 @@ async function postVoucher(type){
   try{
     const {data,error}=await sb.from('vouchers').insert({date,type,acc_id:acc.dbId,acc_name:acc.name,acc_no:accNo,vno,amt,narr}).select().single();
     if(error){toast('Error: '+error.message,false);beep('error');unlockBtn(btnId);return;}
-    vouchers.push({id:data.id,date,type,accId:accNo,accName:acc.name,accNo,vno,amt,narr});
+    const newVoucher={id:data.id,date,type,accId:accNo,accName:acc.name,accNo,vno,amt,narr};
+    ownIds.add(data.id);  // mark as locally-owned so realtime skips it
+    vouchers.push(newVoucher);
     nextVno[type]++;
     await sb.from('meta').upsert({key:type==='CR'?'next_cv_no':'next_dv_no',value:String(nextVno[type])});
     updateVnoDisplays();
@@ -880,6 +902,7 @@ function refreshAll(){
 
 async function delVoucher(id){
   if(!confirm('Delete this voucher?'))return;
+  ownIds.add(id);  // mark as own delete so realtime echo is ignored
   await sb.from('vouchers').delete().eq('id',id);
   vouchers=vouchers.filter(v=>v.id!==id);
   refreshAll();toast('Voucher deleted — all books updated.');
@@ -1006,8 +1029,21 @@ function renderTrial(){
   accounts.forEach(a=>{drT[a.no]=0;crT[a.no]=0;if(a.ob){if(a.obSide==='DR')drT[a.no]+=a.ob;else crT[a.no]+=a.ob;}});
   filtered.forEach(v=>{if(v.type==='DR')drT[v.accId]=(drT[v.accId]||0)+v.amt;else crT[v.accId]=(crT[v.accId]||0)+v.amt;});
   let gDr=0,gCr=0,rows='';
-  accounts.forEach(a=>{const dr=drT[a.no]||0,cr=crT[a.no]||0;if(!dr&&!cr)return;gDr+=dr;gCr+=cr;
-    rows+=`<tr><td class="acc-num">${a.no}</td><td><strong>${a.name}</strong></td><td style="color:var(--slate)">${a.ref||'—'}</td><td class="num dr-col">${dr?fmt(dr):''}</td><td class="num cr-col">${cr?fmt(cr):''}</td></tr>`;
+  accounts.forEach(a=>{
+    const dr=drT[a.no]||0,cr=crT[a.no]||0;
+    if(!dr&&!cr)return;
+    // Net balance: positive = Dr balance, negative = Cr balance
+    const net=dr-cr;
+    const netAbs=Math.abs(net);
+    const isDr=net>0;
+    gDr+=dr;gCr+=cr;
+    const balCell=`<td class="num" style="font-weight:700;font-family:'Courier New',monospace;font-size:14px;color:${isDr?'var(--blue)':'var(--green)'}">${fmt(netAbs)} ${isDr?'Dr':'Cr'}</td>`;
+    rows+=`<tr>
+      <td class="acc-num">${a.no}</td>
+      <td><strong>${a.name}</strong></td>
+      <td style="color:var(--slate)">${a.ref||'—'}</td>
+      ${balCell}
+    </tr>`;
   });
   const balanced=Math.abs(gDr-gCr)<1;
   const ml=month?(()=>{const[y,mo]=month.split('-');return new Date(y,mo-1).toLocaleString('en-US',{month:'long',year:'numeric'});})():'All Time';
@@ -1021,9 +1057,14 @@ function renderTrial(){
   </div>
   <div class="card" style="padding:0;overflow:hidden">
     <div class="tab-wrap"><table>
-      <thead><tr><th>Acc No.</th><th>Account Name</th><th>Ref No.</th><th class="num">Debit (PKR)</th><th class="num">Credit (PKR)</th></tr></thead>
+      <thead><tr><th>Acc No.</th><th>Account Name</th><th>Ref No.</th><th class="num">Balance (Dr / Cr)</th></tr></thead>
       <tbody>${rows||'<tr><td colspan="5" class="empty">No transactions for this period.</td></tr>'}</tbody>
-      <tfoot><tr class="tfoot-row"><td colspan="3">Grand Total</td><td class="num dr-col">${fmt(gDr)}</td><td class="num cr-col">${fmt(gCr)}</td></tr></tfoot>
+      <tfoot><tr class="tfoot-row">
+  <td colspan="3">Grand Total</td>
+  <td class="num" style="font-weight:700;font-family:'Courier New',monospace">
+    <span class="dr-col">Dr ${fmt(gDr)}</span> &nbsp;/&nbsp; <span class="cr-col">Cr ${fmt(gCr)}</span>
+  </td>
+</tr></tfoot>
     </table></div>
   </div>`;
 }
@@ -1089,10 +1130,10 @@ function printTrial(){
   accounts.forEach(a=>{drT[a.no]=0;crT[a.no]=0;if(a.ob){if(a.obSide==='DR')drT[a.no]+=a.ob;else crT[a.no]+=a.ob;}});
   filtered.forEach(v=>{if(v.type==='DR')drT[v.accId]=(drT[v.accId]||0)+v.amt;else crT[v.accId]=(crT[v.accId]||0)+v.amt;});
   let gDr=0,gCr=0,rows='';
-  accounts.forEach(a=>{const dr=drT[a.no]||0,cr=crT[a.no]||0;if(!dr&&!cr)return;gDr+=dr;gCr+=cr;rows+=`<tr><td>${a.no}</td><td>${a.name}</td><td>${a.ref||'—'}</td><td class="num">${dr?fmt(dr):''}</td><td class="num">${cr?fmt(cr):''}</td></tr>`;});
+  accounts.forEach(a=>{const dr=drT[a.no]||0,cr=crT[a.no]||0;if(!dr&&!cr)return;gDr+=dr;gCr+=cr;const net=dr-cr;const netAbs=Math.abs(net);const isDr=net>0;rows+=`<tr><td>${a.no}</td><td>${a.name}</td><td>${a.ref||'—'}</td><td class="num" style="font-weight:700;color:${isDr?'#1d4ed8':'#15803d'}">${fmt(netAbs)} ${isDr?'Dr':'Cr'}</td></tr>`;});
   const balanced=Math.abs(gDr-gCr)<1;
   const ml=month?(()=>{const[y,mo]=month.split('-');return new Date(y,mo-1).toLocaleString('en-US',{month:'long',year:'numeric'});})():'All Time';
-  printBase('Trial Balance',`<table><thead><tr><th>Acc No.</th><th>Account Name</th><th>Ref No.</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>${rows||'<tr><td colspan="5" style="color:#aaa">None</td></tr>'}</tbody><tfoot><tr><td colspan="3">Grand Total</td><td class="num dr">${fmt(gDr)}</td><td class="num cr">${fmt(gCr)}</td></tr></tfoot></table><p style="margin-top:12px;font-weight:700">Status: <span style="color:${balanced?'#15803d':'#dc2626'}">${balanced?'BALANCED':'NOT BALANCED — Diff: PKR '+fmt(Math.abs(gDr-gCr))}</span></p>`,`Period: ${ml}`);
+  printBase('Trial Balance',`<table><thead><tr><th>Acc No.</th><th>Account Name</th><th>Ref No.</th><th class="num">Balance (Dr / Cr)</th></tr></thead><tbody>${rows||'<tr><td colspan="4" style="color:#aaa">None</td></tr>'}</tbody><tfoot><tr><td colspan="3">Grand Total</td><td class="num"><span style="color:#1d4ed8;font-weight:700">Dr ${fmt(gDr)}</span> / <span style="color:#15803d;font-weight:700">Cr ${fmt(gCr)}</span></td></tr></tfoot></table><p style="margin-top:12px;font-weight:700">Status: <span style="color:${balanced?'#15803d':'#dc2626'}">${balanced?'BALANCED':'NOT BALANCED — Diff: PKR '+fmt(Math.abs(gDr-gCr))}</span></p>`,`Period: ${ml}`);
 }
 
 // Set today as default for all entry date fields
@@ -1164,7 +1205,7 @@ function renderBF(){
   const tCr=vouchers.filter(v=>v.type==='CR').reduce((s,v)=>s+v.amt,0);
   const tDr=vouchers.filter(v=>v.type==='DR').reduce((s,v)=>s+v.amt,0);
   const bfNet=bfSide==='DR'?bfAmt:-bfAmt;const net=bfNet+tDr-tCr;const closeSide=net>=0?'Dr':'Cr';
-  document.getElementById('bf-closing').innerHTML=`Closing Balance (B/F + DR − CR): <span class="${net>=0?'dr-col':'cr-col'}" style="font-family:monospace;font-size:16px;font-weight:700">PKR ${fmt(Math.abs(net))} ${closeSide}</span>`;
+  document.getElementById('bf-closing').innerHTML=`Closing Balance (B/F + DR − CR): <span class="${net>=0?'dr-col':'cr-col'}" style="font-family:'Trebuchet MS',Arial,sans-serif;font-variant-numeric:tabular-nums;font-size:16px;font-weight:700">PKR ${fmt(Math.abs(net))} ${closeSide}</span>`;
 }
 function showBFEdit(){setAmt('bf-amt',bfAmt||'');document.getElementById('bf-side').value=bfSide;document.getElementById('bf-edit').style.display='block';document.getElementById('bf-view').style.display='none';document.getElementById('bf-amt').focus();}
 function hideBFEdit(){document.getElementById('bf-edit').style.display='none';document.getElementById('bf-view').style.display='block';}
@@ -1219,15 +1260,15 @@ function startRealtime(){
   const mapAcc=a=>({id:a.acc_no,no:a.acc_no,dbId:a.id,name:a.name,ref:a.ref||'',ob:parseFloat(a.ob)||0,obSide:a.ob_side||'DR',obDate:a.ob_date||''});
   const mapV=v=>({id:v.id,date:v.date,type:v.type,accId:v.acc_no,accName:v.acc_name,accNo:v.acc_no,vno:v.vno,amt:parseFloat(v.amt),narr:v.narr||''});
   realtimeChannel=sb.channel('khata-live')
-    .on('postgres_changes',{event:'INSERT',schema:'public',table:'accounts'},p=>{if(!accounts.find(x=>x.no===p.new.acc_no)){accounts.push(mapAcc(p.new));populateSelects();refreshAll();}})
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'accounts'},p=>{if(ownAccIds.has(p.new.id)){ownAccIds.delete(p.new.id);return;}if(!accounts.find(x=>x.no===p.new.acc_no)){accounts.push(mapAcc(p.new));populateSelects();refreshAll();}})
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'accounts'},p=>{
       const idx=accounts.findIndex(x=>x.dbId===p.new.id);
       if(idx>=0){const oldName=accounts[idx].name;accounts[idx]=mapAcc(p.new);if(oldName!==p.new.name)vouchers.filter(v=>v.accId===p.new.acc_no).forEach(v=>v.accName=p.new.name);populateSelects();refreshAll();}
     })
     .on('postgres_changes',{event:'DELETE',schema:'public',table:'accounts'},p=>{accounts=accounts.filter(x=>x.no!==p.old.acc_no);populateSelects();refreshAll();})
-    .on('postgres_changes',{event:'INSERT',schema:'public',table:'vouchers'},p=>{if(!vouchers.find(x=>x.id===p.new.id)){vouchers.push(mapV(p.new));const t=p.new.type;const m=p.new.vno.match(/\d+/);const n=m?parseInt(m[0]):0;if(n>=nextVno[t]){nextVno[t]=n+1;updateVnoDisplays();}refreshAll();}})
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'vouchers'},p=>{if(ownIds.has(p.new.id)){ownIds.delete(p.new.id);return;}if(!vouchers.find(x=>x.id===p.new.id)){vouchers.push(mapV(p.new));const t=p.new.type;const m=p.new.vno.match(/\d+/);const n=m?parseInt(m[0]):0;if(n>=nextVno[t]){nextVno[t]=n+1;updateVnoDisplays();}refreshAll();}})
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'vouchers'},p=>{const idx=vouchers.findIndex(x=>x.id===p.new.id);if(idx>=0){vouchers[idx]=mapV(p.new);refreshAll();}})
-    .on('postgres_changes',{event:'DELETE',schema:'public',table:'vouchers'},p=>{const before=vouchers.length;vouchers=vouchers.filter(x=>x.id!==p.old.id);if(vouchers.length!==before)refreshAll();})
+    .on('postgres_changes',{event:'DELETE',schema:'public',table:'vouchers'},p=>{if(ownIds.has(p.old.id)){ownIds.delete(p.old.id);return;}const before=vouchers.length;vouchers=vouchers.filter(x=>x.id!==p.old.id);if(vouchers.length!==before)refreshAll();})
     .on('postgres_changes',{event:'*',schema:'public',table:'meta'},p=>{const row=p.new||{};if(row.key==='bf_amt'){bfAmt=parseFloat(row.value)||0;renderBF();}if(row.key==='bf_side'){bfSide=row.value||'DR';renderBF();}if(row.key==='next_cv_no'&&parseInt(row.value)>nextVno.CR){nextVno.CR=parseInt(row.value);updateVnoDisplays();}if(row.key==='next_dv_no'&&parseInt(row.value)>nextVno.DR){nextVno.DR=parseInt(row.value);updateVnoDisplays();}})
     .subscribe(status=>{
       const dot=document.querySelector('.conn-dot'),lbl=document.getElementById('conn-label');
