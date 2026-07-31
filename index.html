@@ -69,6 +69,22 @@ tr:last-child td{border-bottom:none}
 .num{text-align:right;font-family:'Trebuchet MS',Arial,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:0.02em}
 .empty{color:var(--slate-light);text-align:center;padding:2rem;font-size:13px}
 .tfoot-row td{font-weight:700;border-top:2px solid #cbd5e1;background:#f8fafc}
+/* Date partition rows in voucher tables */
+.date-partition-row td{background:#f1f5f9;padding:6px 11px;border-bottom:1px solid var(--border);border-top:2px solid #cbd5e1}
+.date-partition-row:first-child td{border-top:none}
+.date-partition-label{font-size:12px;font-weight:700;color:var(--navy3);letter-spacing:0.03em}
+.date-partition-tag{margin-left:10px;font-size:11px;font-weight:700;padding:1px 8px;border-radius:10px;background:#e0f2fe;color:#0369a1}
+.date-subtotal-row td{background:#fafafa;border-bottom:2px solid #e2e8f0;padding:5px 11px}
+/* Analysis cards */
+.analysis-card{background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,0.04)}
+.analysis-card.warn{border-left:4px solid #f59e0b;background:#fffbeb}
+.analysis-card.error{border-left:4px solid var(--red);background:#fef2f2}
+.analysis-card.ok{border-left:4px solid var(--green);background:#f0fdf4}
+.analysis-card.info{border-left:4px solid var(--blue);background:var(--blue-light)}
+.analysis-title{font-size:13px;font-weight:700;margin-bottom:4px}
+.analysis-body{font-size:13px;color:var(--slate);line-height:1.7}
+.analysis-body ul{margin:6px 0 0 16px}
+.analysis-body li{margin-bottom:3px}
 /* Clean numeric font — no slashed zeros, clear digits */
 @font-face{
   font-family:'KhataNum';
@@ -188,6 +204,7 @@ tr:last-child td{border-bottom:none}
   <button onclick="show('ledger')">Ledger</button>
   <button onclick="show('find-voucher')">Find Voucher</button>
   <button onclick="show('trial')">Trial Balance</button>
+  <button onclick="show('analysis')">&#x1F50D; Smart Analysis</button>
 </div>
 
 <div id="login-screen" class="login-screen">
@@ -386,9 +403,20 @@ tr:last-child td{border-bottom:none}
 <!-- LEDGER -->
 <div id="ledger" class="sec">
   <div class="page-header"><h2>Ledger</h2><button class="btn-print" onclick="printLedger()">Print / Export</button></div>
-  <div class="filter-row">
-    <div><label>Account No. (type)</label><input id="l-accno" class="acc-input" placeholder="e.g. 1001" oninput="lookupLedger()" style="max-width:160px" onkeydown="if(event.key==='Enter')renderLedger()"></div>
-    <div><label>Or select</label><select id="l-acc" onchange="document.getElementById('l-accno').value=this.value;renderLedger()" style="min-width:200px"><option value="">-- select --</option></select></div>
+  <div class="filter-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
+    <div>
+      <label>Search by Acc No. or Name</label>
+      <div class="acc-lookup-wrap" style="min-width:260px">
+        <input id="l-search" class="acc-input" placeholder="type number or name…" oninput="ledgerSearch(this.value)" onkeydown="ledgerKeydown(event)" autocomplete="off">
+        <div id="l-dropdown" class="acc-dropdown" style="display:none"></div>
+      </div>
+    </div>
+    <div>
+      <label>Or select</label>
+      <select id="l-acc" onchange="ledgerSelectAcc(parseInt(this.value))" style="min-width:200px"><option value="">-- select --</option></select>
+    </div>
+    <div style="padding-top:18px"><button class="btn-print" onclick="printLedger()">Print / Export</button></div>
+    <div style="padding-top:18px;margin-left:auto" id="l-accno" style="display:none"></div>
   </div>
   <div id="l-content"><div class="card" style="text-align:center;color:var(--slate-light);padding:2.5rem">Type account number or select to view ledger.</div></div>
 </div>
@@ -399,7 +427,13 @@ tr:last-child td{border-bottom:none}
   <div class="card">
     <div class="frow f4">
       <div><label>Voucher No.</label><input id="fv-vno" placeholder="e.g. C01" onkeydown="if(event.key==='Enter')searchVoucher()"></div>
-      <div><label>Acc No.</label><input id="fv-accno" class="acc-input" placeholder="e.g. 1001" onkeydown="if(event.key==='Enter')searchVoucher()"></div>
+      <div>
+        <label>Acc No. or Name</label>
+        <div class="acc-lookup-wrap">
+          <input id="fv-accno" class="acc-input" placeholder="number or name…" oninput="fvAccSearch(this.value)" onkeydown="fvAccKeydown(event)" autocomplete="off">
+          <div id="fv-dropdown" class="acc-dropdown" style="display:none"></div>
+        </div>
+      </div>
       <div><label>Date</label><input type="date" id="fv-date" onkeydown="if(event.key==='Enter')searchVoucher()"></div>
       <div style="padding-top:18px"><button class="btn btn-navy" onclick="searchVoucher()">Search</button></div>
     </div>
@@ -461,8 +495,17 @@ let selectedAccNo={cr:null,dr:null,e:null};
 let realtimeChannel=null;
 let appInitialised=false;
 let submitting=false;
-const ownIds=new Set();     // voucher IDs inserted by THIS client — realtime skips these
-const ownAccIds=new Set();  // account IDs inserted by THIS client — realtime skips these
+// Use Maps with string keys to avoid number/string type mismatch in Set
+// Value = timestamp so stale entries auto-expire after 10 seconds
+const ownIds=new Map();
+const ownAccIds=new Map();
+function ownMark(map,id){map.set(String(id),Date.now());}
+function ownCheck(map,id){
+  const k=String(id);
+  if(!map.has(k))return false;
+  if(Date.now()-map.get(k)>10000){map.delete(k);return false;} // expired
+  map.delete(k);return true;
+}
 
 const fmt=n=>Number(n).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
 const today=()=>new Date().toISOString().split('T')[0];
@@ -665,12 +708,58 @@ document.addEventListener('click',e=>{
     const inp=document.getElementById(pfx+'-search');
     if(dd&&inp&&!dd.contains(e.target)&&e.target!==inp)dd.style.display='none';
   });
+  const ldd=document.getElementById('l-dropdown');
+  const linp=document.getElementById('l-search');
+  if(ldd&&linp&&!ldd.contains(e.target)&&e.target!==linp)ldd.style.display='none';
+  const fvdd=document.getElementById('fv-dropdown');
+  const fvinp=document.getElementById('fv-accno');
+  if(fvdd&&fvinp&&!fvdd.contains(e.target)&&e.target!==fvinp)fvdd.style.display='none';
 });
 
+let ledgerSelectedNo=null;
+let ledgerDdIdx=-1;
+function ledgerSearch(val){
+  const q=val.trim().toLowerCase();
+  const dd=document.getElementById('l-dropdown');
+  if(!q){dd.style.display='none';ledgerSelectedNo=null;return;}
+  const exact=accounts.find(a=>String(a.no)===val.trim());
+  if(exact&&/^\d+$/.test(val.trim())){
+    ledgerSelectedNo=exact.no;document.getElementById('l-acc').value=exact.no;
+    dd.style.display='none';renderLedger();return;
+  }
+  const matches=accounts.filter(a=>
+    String(a.no).startsWith(q)||a.name.toLowerCase().includes(q)||(a.ref&&a.ref.toLowerCase().includes(q))
+  ).slice(0,10);
+  if(!matches.length){dd.style.display='none';return;}
+  ledgerDdIdx=-1;
+  dd.innerHTML=matches.map(a=>{
+    const rb=runBal(a.no);const side=rb>=0?'Dr':'Cr';
+    return`<div class="acc-dropdown-item" data-no="${a.no}" onmousedown="ledgerSelectAcc(${a.no})">
+      <div><span class="item-no">${a.no}</span> <span class="item-name">${a.name}</span></div>
+      <div class="item-bal">${fmt(Math.abs(rb))} ${side}</div>
+    </div>`;
+  }).join('');
+  dd.style.display='block';
+}
+function ledgerKeydown(e){
+  const dd=document.getElementById('l-dropdown');
+  const items=dd.querySelectorAll('.acc-dropdown-item');
+  if(e.key==='ArrowDown'){e.preventDefault();ledgerDdIdx=Math.min(ledgerDdIdx+1,items.length-1);items.forEach((el,i)=>el.classList.toggle('selected',i===ledgerDdIdx));return;}
+  if(e.key==='ArrowUp'){e.preventDefault();ledgerDdIdx=Math.max(ledgerDdIdx-1,0);items.forEach((el,i)=>el.classList.toggle('selected',i===ledgerDdIdx));return;}
+  if(e.key==='Enter'){e.preventDefault();if(dd.style.display!=='none'&&ledgerDdIdx>=0&&items[ledgerDdIdx]){ledgerSelectAcc(parseInt(items[ledgerDdIdx].dataset.no));}else if(ledgerSelectedNo){renderLedger();}return;}
+  if(e.key==='Escape'){dd.style.display='none';return;}
+}
+function ledgerSelectAcc(no){
+  const acc=accounts.find(a=>a.no===no);if(!acc)return;
+  ledgerSelectedNo=no;
+  document.getElementById('l-search').value=acc.no+' — '+acc.name;
+  document.getElementById('l-dropdown').style.display='none';
+  document.getElementById('l-acc').value=no;
+  renderLedger();
+}
 function lookupLedger(){
-  const val=document.getElementById('l-accno').value.trim();
-  document.getElementById('l-acc').value=val;
-  if(val.length>=3)renderLedger();
+  // legacy — kept for refreshAll compatibility
+  if(ledgerSelectedNo)renderLedger();
 }
 
 function updateVnoDisplays(){
@@ -726,7 +815,7 @@ async function saveAccount(){
       .insert({acc_no:no,name,type:'General',ref,ob,ob_side:obSide,ob_date:obDate})
       .select().single();
     if(error){toast('Error: '+error.message,false);beep('error');unlockBtn('ac-btn');return;}
-    ownAccIds.add(data.id);
+    ownMark(ownAccIds,data.id);
     accounts.push({id:no,no,dbId:data.id,name,ref,ob,obSide,obDate:obDate||''});
     if(no>=nextAccNo)nextAccNo=no+1;
     await sb.from('meta').upsert({key:'next_acc_no',value:String(nextAccNo)});
@@ -814,7 +903,7 @@ async function postVoucher(type){
     const {data,error}=await sb.from('vouchers').insert({date,type,acc_id:acc.dbId,acc_name:acc.name,acc_no:accNo,vno,amt,narr}).select().single();
     if(error){toast('Error: '+error.message,false);beep('error');unlockBtn(btnId);return;}
     const newVoucher={id:data.id,date,type,accId:accNo,accName:acc.name,accNo,vno,amt,narr};
-    ownIds.add(data.id);  // mark as locally-owned so realtime skips it
+    ownMark(ownIds,data.id);  // mark as locally-owned so realtime skips it
     vouchers.push(newVoucher);
     nextVno[type]++;
     await sb.from('meta').upsert({key:type==='CR'?'next_cv_no':'next_dv_no',value:String(nextVno[type])});
@@ -858,14 +947,39 @@ function getDRFiltered(){
   if(fr)f=f.filter(v=>v.date>=fr);if(to)f=f.filter(v=>v.date<=to);return f;
 }
 
+function groupByDate(vouchers){
+  const groups={};
+  vouchers.forEach(v=>{if(!groups[v.date])groups[v.date]=[];groups[v.date].push(v);});
+  return Object.entries(groups).sort((a,b)=>b[0].localeCompare(a[0])); // newest first
+}
+function formatDateHeader(dateStr){
+  const d=new Date(dateStr+'T00:00:00');
+  const today=new Date();today.setHours(0,0,0,0);
+  const diff=Math.round((today-d)/86400000);
+  const label=diff===0?'Today':diff===1?'Yesterday':diff<=7?diff+' days ago':'';
+  const fmt2=d.toLocaleDateString('en-PK',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+  return`<tr class="date-partition-row"><td colspan="7"><span class="date-partition-label">${fmt2}</span>${label?`<span class="date-partition-tag">${label}</span>`:''}</td></tr>`;
+}
+function renderWithDateGroups(bodyId,vouchers,showActions=true){
+  if(!vouchers.length)return'<tr><td colspan="7" class="empty">No vouchers.</td></tr>';
+  const groups=groupByDate(vouchers);
+  let html='';
+  groups.forEach(([date,vs])=>{
+    html+=formatDateHeader(date);
+    const dayTotal=vs.reduce((s,v)=>s+v.amt,0);
+    html+=vs.map(v=>vRow(v,showActions)).join('');
+    html+=`<tr class="date-subtotal-row"><td colspan="5" style="text-align:right;font-size:12px;color:var(--slate);font-weight:600">Day total:</td><td class="num" style="font-weight:700;color:${vs[0].type==='CR'?'var(--green)':'var(--blue)'}">${fmt(dayTotal)}</td><td></td></tr>`;
+  });
+  return html;
+}
 function renderCR(){
   const f=getCRFiltered();const tot=f.reduce((s,v)=>s+v.amt,0);
-  document.getElementById('cr-body').innerHTML=f.length?f.map(v=>vRow(v)).join(''):'<tr><td colspan="7" class="empty">No credit vouchers.</td></tr>';
+  document.getElementById('cr-body').innerHTML=renderWithDateGroups('cr-body',f,true);
   document.getElementById('cr-total').textContent='PKR '+fmt(tot);
 }
 function renderDR(){
   const f=getDRFiltered();const tot=f.reduce((s,v)=>s+v.amt,0);
-  document.getElementById('dr-body').innerHTML=f.length?f.map(v=>vRow(v)).join(''):'<tr><td colspan="7" class="empty">No debit vouchers.</td></tr>';
+  document.getElementById('dr-body').innerHTML=renderWithDateGroups('dr-body',f,true);
   document.getElementById('dr-total').textContent='PKR '+fmt(tot);
 }
 
@@ -891,8 +1005,7 @@ function renderDaybook(){
 
 function refreshAll(){
   renderAccounts();renderCR();renderDR();renderDaybook();
-  const lAccNo=document.getElementById('l-accno').value.trim()||document.getElementById('l-acc').value;
-  if(lAccNo)renderLedger();
+  if(ledgerSelectedNo)renderLedger();
   if(document.getElementById('trial').classList.contains('active'))renderTrial();
   if(document.getElementById('find-voucher').classList.contains('active')){
     const hasSearch=document.getElementById('fv-vno').value||document.getElementById('fv-accno').value||document.getElementById('fv-date').value;
@@ -902,7 +1015,7 @@ function refreshAll(){
 
 async function delVoucher(id){
   if(!confirm('Delete this voucher?'))return;
-  ownIds.add(id);  // mark as own delete so realtime echo is ignored
+  ownMark(ownIds,id);  // mark as own delete so realtime echo is ignored
   await sb.from('vouchers').delete().eq('id',id);
   vouchers=vouchers.filter(v=>v.id!==id);
   refreshAll();toast('Voucher deleted — all books updated.');
@@ -948,13 +1061,42 @@ async function saveEdit(){
   unlockBtn('edit-save-btn');
 }
 
+let fvSelectedNo=null;
+let fvDdIdx=-1;
+function fvAccSearch(val){
+  const q=val.trim().toLowerCase();
+  const dd=document.getElementById('fv-dropdown');
+  if(!q){dd.style.display='none';fvSelectedNo=null;return;}
+  const exact=accounts.find(a=>String(a.no)===val.trim());
+  if(exact&&/^\d+$/.test(val.trim())){fvSelectedNo=exact.no;dd.style.display='none';return;}
+  const matches=accounts.filter(a=>String(a.no).startsWith(q)||a.name.toLowerCase().includes(q)).slice(0,8);
+  if(!matches.length){dd.style.display='none';fvSelectedNo=null;return;}
+  fvDdIdx=-1;
+  dd.innerHTML=matches.map(a=>`<div class="acc-dropdown-item" data-no="${a.no}" onmousedown="fvSelectAcc(${a.no})"><div><span class="item-no">${a.no}</span> <span class="item-name">${a.name}</span></div></div>`).join('');
+  dd.style.display='block';
+}
+function fvAccKeydown(e){
+  const dd=document.getElementById('fv-dropdown');const items=dd.querySelectorAll('.acc-dropdown-item');
+  if(e.key==='ArrowDown'){e.preventDefault();fvDdIdx=Math.min(fvDdIdx+1,items.length-1);items.forEach((el,i)=>el.classList.toggle('selected',i===fvDdIdx));return;}
+  if(e.key==='ArrowUp'){e.preventDefault();fvDdIdx=Math.max(fvDdIdx-1,0);items.forEach((el,i)=>el.classList.toggle('selected',i===fvDdIdx));return;}
+  if(e.key==='Enter'){e.preventDefault();if(dd.style.display!=='none'&&fvDdIdx>=0&&items[fvDdIdx]){fvSelectAcc(parseInt(items[fvDdIdx].dataset.no));}else{searchVoucher();}return;}
+  if(e.key==='Escape'){dd.style.display='none';}
+}
+function fvSelectAcc(no){
+  const acc=accounts.find(a=>a.no===no);if(!acc)return;
+  fvSelectedNo=no;
+  document.getElementById('fv-accno').value=acc.no+' — '+acc.name;
+  document.getElementById('fv-dropdown').style.display='none';
+}
+
 function searchVoucher(){
   const vno=document.getElementById('fv-vno').value.trim().toUpperCase();
   const accNo=document.getElementById('fv-accno').value.trim();
   const date=document.getElementById('fv-date').value;
   let res=vouchers.slice();
   if(vno)res=res.filter(v=>v.vno.toUpperCase().includes(vno));
-  if(accNo)res=res.filter(v=>String(v.accNo)===accNo);
+  const accNoSearch=fvSelectedNo||parseInt(accNo)||0;
+  if(accNoSearch)res=res.filter(v=>v.accNo===accNoSearch||v.accId===accNoSearch);
   if(date)res=res.filter(v=>v.date===date);
   res.sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
   const cont=document.getElementById('fv-results');
@@ -977,8 +1119,8 @@ function searchVoucher(){
 }
 
 function renderLedger(){
-  const accNoRaw=document.getElementById('l-accno').value.trim()||document.getElementById('l-acc').value;
-  const accNo=parseInt(accNoRaw);const cont=document.getElementById('l-content');
+  const accNo=ledgerSelectedNo||parseInt(document.getElementById('l-acc').value)||0;
+  const cont=document.getElementById('l-content');
   if(!accNo){cont.innerHTML='<div class="card" style="text-align:center;color:var(--slate-light);padding:2.5rem">Type account number or select above.</div>';return;}
   const acc=accounts.find(a=>a.no===accNo);
   if(!acc){cont.innerHTML='<div class="card" style="text-align:center;color:var(--red);padding:2rem">Account '+accNo+' not found.</div>';return;}
@@ -1070,11 +1212,106 @@ function renderTrial(){
 }
 
 
+function runAnalysis(){
+  const cont=document.getElementById('analysis-results');
+  cont.innerHTML='<div class="card" style="text-align:center;padding:2rem;color:var(--slate)"><div class="spinner" style="margin:0 auto 12px"></div>Scanning your books…</div>';
+  setTimeout(()=>{
+    const issues=[];
+    const warnings=[];
+    const infos=[];
+
+    // ── 1. Trial balance check
+    const drT={},crT={};
+    accounts.forEach(a=>{drT[a.no]=0;crT[a.no]=0;if(a.ob){if(a.obSide==='DR')drT[a.no]+=a.ob;else crT[a.no]+=a.ob;}});
+    vouchers.forEach(v=>{if(v.type==='DR')drT[v.accId]=(drT[v.accId]||0)+v.amt;else crT[v.accId]=(crT[v.accId]||0)+v.amt;});
+    let gDr=0,gCr=0;
+    accounts.forEach(a=>{const net=(drT[a.no]||0)-(crT[a.no]||0);const abs=Math.abs(net);if(net>0)gDr+=abs;else gCr+=abs;});
+    const diff=Math.abs(gDr-gCr);
+    if(diff>0){
+      issues.push({title:`Trial balance difference: PKR ${fmt(diff)}`,body:`Your books are out of balance by PKR ${fmt(diff)}. This means the total of debit balances does not equal the total of credit balances. Common causes:<ul><li>A voucher was deleted on one side but not the other</li><li>An opening balance entered on wrong side (Dr instead of Cr or vice versa)</li><li>A duplicate entry that was only partially deleted</li></ul>`});
+    }else{
+      infos.push({title:'Trial balance is balanced ✓',body:'Total debit balances equal total credit balances. Books are mathematically correct.'});
+    }
+
+    // ── 2. Exact duplicate vouchers (same accNo, amt, date, type)
+    const dupMap={};
+    vouchers.forEach(v=>{const k=`${v.type}|${v.accId}|${v.amt}|${v.date}`;if(!dupMap[k])dupMap[k]=[];dupMap[k].push(v);});
+    const dups=Object.values(dupMap).filter(g=>g.length>1);
+    if(dups.length){
+      const list=dups.map(g=>`<li>${g[0].date} — ${g[0].accName} — PKR ${fmt(g[0].amt)} — ${g[0].type} (${g.length}x) — Vouchers: ${g.map(v=>v.vno).join(', ')}</li>`).join('');
+      issues.push({title:`${dups.length} possible duplicate voucher group(s) found`,body:`These vouchers have the exact same account, amount, date and type. One of them is likely a duplicate:<ul>${list}</ul>Check these carefully in Find Voucher tab and delete the extra one.`});
+    }else{
+      infos.push({title:'No exact duplicate vouchers found ✓',body:'No two vouchers share the same account, amount, date and type.'});
+    }
+
+    // ── 3. Same-day same-amount duplicates across different voucher numbers
+    const sdMap={};
+    vouchers.forEach(v=>{const k=`${v.type}|${v.amt}|${v.date}`;if(!sdMap[k])sdMap[k]=[];sdMap[k].push(v);});
+    const sdDups=Object.values(sdMap).filter(g=>g.length>1&&g.map(x=>x.accId).some((id,i,arr)=>arr.indexOf(id)!==i));
+    if(sdDups.length){
+      const list=sdDups.slice(0,5).map(g=>`<li>${g[0].date} — PKR ${fmt(g[0].amt)} — ${g[0].type} posted ${g.length} times to: ${[...new Set(g.map(x=>x.accName))].join(', ')}</li>`).join('');
+      warnings.push({title:`${sdDups.length} suspicious same-day same-amount voucher(s)`,body:`Same amount posted to multiple accounts on the same day — may be intentional (e.g. split payment) or accidental duplication:<ul>${list}</ul>`});
+    }
+
+    // ── 4. Voucher number sequence gaps
+    const cvNos=vouchers.filter(v=>v.type==='CR').map(v=>{const m=v.vno.match(/\d+/);return m?parseInt(m[0]):0;}).sort((a,b)=>a-b);
+    const dvNos=vouchers.filter(v=>v.type==='DR').map(v=>{const m=v.vno.match(/\d+/);return m?parseInt(m[0]):0;}).sort((a,b)=>a-b);
+    const gaps=[];
+    for(let i=1;i<cvNos.length;i++){if(cvNos[i]-cvNos[i-1]>1)gaps.push(`CR: C${String(cvNos[i-1]).padStart(2,'0')} → C${String(cvNos[i]).padStart(2,'0')} (${cvNos[i]-cvNos[i-1]-1} missing)`);}
+    for(let i=1;i<dvNos.length;i++){if(dvNos[i]-dvNos[i-1]>1)gaps.push(`DR: D${String(dvNos[i-1]).padStart(2,'0')} → D${String(dvNos[i]).padStart(2,'0')} (${dvNos[i]-dvNos[i-1]-1} missing)`);}
+    if(gaps.length){
+      warnings.push({title:`${gaps.length} gap(s) in voucher number sequence`,body:`Voucher numbers should be sequential. Gaps usually mean vouchers were deleted. If they were deleted intentionally, ignore this.<ul>${gaps.map(g=>`<li>${g}</li>`).join('')}</ul>`});
+    }
+
+    // ── 5. Accounts with no vouchers (orphan accounts)
+    const activeAccIds=new Set(vouchers.map(v=>v.accId));
+    const orphans=accounts.filter(a=>!activeAccIds.has(a.no)&&!a.ob);
+    if(orphans.length){
+      warnings.push({title:`${orphans.length} account(s) with no transactions and no opening balance`,body:`These accounts have never been used:<ul>${orphans.slice(0,10).map(a=>`<li>${a.no} — ${a.name}</li>`).join('')}${orphans.length>10?`<li>…and ${orphans.length-10} more</li>`:''}</ul>Consider removing them to keep the account book clean.`});
+    }
+
+    // ── 6. Accounts with very large imbalance
+    const largeImbal=[];
+    accounts.forEach(a=>{
+      const net=(drT[a.no]||0)-(crT[a.no]||0);
+      if(Math.abs(net)>5000000){largeImbal.push({acc:a,net});}
+    });
+    if(largeImbal.length){
+      const list=largeImbal.sort((a,b)=>Math.abs(b.net)-Math.abs(a.net)).slice(0,5)
+        .map(x=>`<li>${x.acc.no} — ${x.acc.name}: PKR ${fmt(Math.abs(x.net))} ${x.net>0?'Dr':'Cr'}</li>`).join('');
+      infos.push({title:`${largeImbal.length} account(s) with balance over PKR 5,000,000`,body:`These accounts have very large outstanding balances — verify they are correct:<ul>${list}</ul>`});
+    }
+
+    // ── 7. Summary stats
+    const totalVouchers=vouchers.length;
+    const totalAccounts=accounts.length;
+    const totalCR=vouchers.filter(v=>v.type==='CR').reduce((s,v)=>s+v.amt,0);
+    const totalDR=vouchers.filter(v=>v.type==='DR').reduce((s,v)=>s+v.amt,0);
+    infos.push({title:`Summary: ${totalAccounts} accounts, ${totalVouchers} vouchers`,body:`Total credit posted: PKR ${fmt(totalCR)}<br>Total debit posted: PKR ${fmt(totalDR)}<br>Net movement: PKR ${fmt(Math.abs(totalCR-totalDR))} ${totalCR>=totalDR?'CR surplus':'DR surplus'}`});
+
+    // ── Render results
+    let html='';
+    if(issues.length){
+      html+=`<div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em">&#9888; ${issues.length} Issue(s) Found</div>`;
+      html+=issues.map(i=>`<div class="analysis-card error"><div class="analysis-title">${i.title}</div><div class="analysis-body">${i.body}</div></div>`).join('');
+    }
+    if(warnings.length){
+      html+=`<div style="font-size:13px;font-weight:700;color:#b45309;margin:12px 0 8px;text-transform:uppercase;letter-spacing:0.05em">&#9888; ${warnings.length} Warning(s)</div>`;
+      html+=warnings.map(w=>`<div class="analysis-card warn"><div class="analysis-title">${w.title}</div><div class="analysis-body">${w.body}</div></div>`).join('');
+    }
+    if(infos.length){
+      html+=`<div style="font-size:13px;font-weight:700;color:var(--slate);margin:12px 0 8px;text-transform:uppercase;letter-spacing:0.05em">&#9432; ${infos.length} Info</div>`;
+      html+=infos.map(i=>`<div class="analysis-card ${i.title.includes('✓')?'ok':'info'}"><div class="analysis-title">${i.title}</div><div class="analysis-body">${i.body}</div></div>`).join('');
+    }
+    cont.innerHTML=html||'<div class="card analysis-card ok"><div class="analysis-title">All clear!</div><div class="analysis-body">No issues found in your books.</div></div>';
+  },100);
+}
+
 function show(id){
   document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  const map={'accounts':0,'cr-voucher':1,'dr-voucher':2,'daybook':3,'ledger':4,'find-voucher':5,'trial':6};
+  const map={'accounts':0,'cr-voucher':1,'dr-voucher':2,'daybook':3,'ledger':4,'find-voucher':5,'trial':6,'analysis':7};
   document.querySelectorAll('.nav button')[map[id]].classList.add('active');
   // Always reset relevant date input to today when opening that tab
   const dateMap={'cr-voucher':'cr-date','dr-voucher':'dr-date','accounts':'ac-ob-date'};
@@ -1113,8 +1350,7 @@ function printAccounts(){
   printBase('Account Book',`<table><thead><tr><th>Acc No.</th><th>Name</th><th>Ref No.</th><th>Opening Bal.</th><th class="num">Running Balance</th></tr></thead><tbody>${accounts.length?mkR(accounts):'<tr><td colspan="5" style="color:#aaa">No accounts</td></tr>'}</tbody></table>`,`Total accounts: ${accounts.length}`);
 }
 function printLedger(){
-  const accNoRaw=document.getElementById('l-accno').value.trim()||document.getElementById('l-acc').value;
-  const accNo=parseInt(accNoRaw);if(!accNo){toast('Select an account first.',false);return;}
+  const accNo=ledgerSelectedNo;if(!accNo){toast('Select an account first.',false);return;}
   const acc=accounts.find(a=>a.no===accNo);if(!acc){toast('Account not found.',false);return;}
   const rel=vouchers.filter(v=>v.accId===accNo).sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
   let rb=acc.ob?(acc.obSide==='DR'?acc.ob:-acc.ob):0;let rows='';
@@ -1261,15 +1497,15 @@ function startRealtime(){
   const mapAcc=a=>({id:a.acc_no,no:a.acc_no,dbId:a.id,name:a.name,ref:a.ref||'',ob:parseFloat(a.ob)||0,obSide:a.ob_side||'DR',obDate:a.ob_date||''});
   const mapV=v=>({id:v.id,date:v.date,type:v.type,accId:v.acc_no,accName:v.acc_name,accNo:v.acc_no,vno:v.vno,amt:parseFloat(v.amt),narr:v.narr||''});
   realtimeChannel=sb.channel('khata-live')
-    .on('postgres_changes',{event:'INSERT',schema:'public',table:'accounts'},p=>{if(ownAccIds.has(p.new.id)){ownAccIds.delete(p.new.id);return;}if(!accounts.find(x=>x.no===p.new.acc_no)){accounts.push(mapAcc(p.new));populateSelects();refreshAll();}})
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'accounts'},p=>{if(ownCheck(ownAccIds,p.new.id))return;if(!accounts.find(x=>x.no===p.new.acc_no)){accounts.push(mapAcc(p.new));populateSelects();refreshAll();}})
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'accounts'},p=>{
       const idx=accounts.findIndex(x=>x.dbId===p.new.id);
       if(idx>=0){const oldName=accounts[idx].name;accounts[idx]=mapAcc(p.new);if(oldName!==p.new.name)vouchers.filter(v=>v.accId===p.new.acc_no).forEach(v=>v.accName=p.new.name);populateSelects();refreshAll();}
     })
     .on('postgres_changes',{event:'DELETE',schema:'public',table:'accounts'},p=>{accounts=accounts.filter(x=>x.no!==p.old.acc_no);populateSelects();refreshAll();})
-    .on('postgres_changes',{event:'INSERT',schema:'public',table:'vouchers'},p=>{if(ownIds.has(p.new.id)){ownIds.delete(p.new.id);return;}if(!vouchers.find(x=>x.id===p.new.id)){vouchers.push(mapV(p.new));const t=p.new.type;const m=p.new.vno.match(/\d+/);const n=m?parseInt(m[0]):0;if(n>=nextVno[t]){nextVno[t]=n+1;updateVnoDisplays();}refreshAll();}})
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'vouchers'},p=>{if(ownCheck(ownIds,p.new.id))return;if(!vouchers.find(x=>x.id===p.new.id)){vouchers.push(mapV(p.new));const t=p.new.type;const m=p.new.vno.match(/\d+/);const n=m?parseInt(m[0]):0;if(n>=nextVno[t]){nextVno[t]=n+1;updateVnoDisplays();}refreshAll();}})
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'vouchers'},p=>{const idx=vouchers.findIndex(x=>x.id===p.new.id);if(idx>=0){vouchers[idx]=mapV(p.new);refreshAll();}})
-    .on('postgres_changes',{event:'DELETE',schema:'public',table:'vouchers'},p=>{if(ownIds.has(p.old.id)){ownIds.delete(p.old.id);return;}const before=vouchers.length;vouchers=vouchers.filter(x=>x.id!==p.old.id);if(vouchers.length!==before)refreshAll();})
+    .on('postgres_changes',{event:'DELETE',schema:'public',table:'vouchers'},p=>{if(ownCheck(ownIds,p.old.id))return;const before=vouchers.length;vouchers=vouchers.filter(x=>x.id!==p.old.id);if(vouchers.length!==before)refreshAll();})
     .on('postgres_changes',{event:'*',schema:'public',table:'meta'},p=>{const row=p.new||{};if(row.key==='bf_amt'){bfAmt=parseFloat(row.value)||0;renderBF();}if(row.key==='bf_side'){bfSide=row.value||'DR';renderBF();}if(row.key==='next_cv_no'&&parseInt(row.value)>nextVno.CR){nextVno.CR=parseInt(row.value);updateVnoDisplays();}if(row.key==='next_dv_no'&&parseInt(row.value)>nextVno.DR){nextVno.DR=parseInt(row.value);updateVnoDisplays();}})
     .subscribe(status=>{
       const dot=document.querySelector('.conn-dot'),lbl=document.getElementById('conn-label');
