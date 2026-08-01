@@ -503,8 +503,9 @@ function ownMark(map,id){map.set(String(id),Date.now());}
 function ownCheck(map,id){
   const k=String(id);
   if(!map.has(k))return false;
-  if(Date.now()-map.get(k)>10000){map.delete(k);return false;} // expired
-  map.delete(k);return true;
+  if(Date.now()-map.get(k)>10000){map.delete(k);return false;}
+  map.delete(k);
+  return true;
 }
 
 const fmt=n=>Number(n).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
@@ -1503,9 +1504,28 @@ function startRealtime(){
       if(idx>=0){const oldName=accounts[idx].name;accounts[idx]=mapAcc(p.new);if(oldName!==p.new.name)vouchers.filter(v=>v.accId===p.new.acc_no).forEach(v=>v.accName=p.new.name);populateSelects();refreshAll();}
     })
     .on('postgres_changes',{event:'DELETE',schema:'public',table:'accounts'},p=>{accounts=accounts.filter(x=>x.no!==p.old.acc_no);populateSelects();refreshAll();})
-    .on('postgres_changes',{event:'INSERT',schema:'public',table:'vouchers'},p=>{if(ownCheck(ownIds,p.new.id))return;if(!vouchers.find(x=>x.id===p.new.id)){vouchers.push(mapV(p.new));const t=p.new.type;const m=p.new.vno.match(/\d+/);const n=m?parseInt(m[0]):0;if(n>=nextVno[t]){nextVno[t]=n+1;updateVnoDisplays();}refreshAll();}})
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'vouchers'},p=>{
+      // Layer 1: own-insert guard (we inserted this ourselves)
+      if(ownCheck(ownIds,p.new.id))return;
+      // Layer 2: id dedup (voucher already in local array)
+      if(vouchers.find(x=>x.id===p.new.id))return;
+      // Layer 3: content dedup (same vno+account+amount+date — catches any edge case)
+      if(vouchers.find(x=>x.vno===p.new.vno&&x.accId===p.new.acc_no&&x.amt===parseFloat(p.new.amt)&&x.date===p.new.date))return;
+      // Safe to add — this is a genuine insert from another device
+      vouchers.push(mapV(p.new));
+      const t=p.new.type;const m=p.new.vno.match(/\d+/);const n=m?parseInt(m[0]):0;
+      if(n>=nextVno[t]){nextVno[t]=n+1;updateVnoDisplays();}
+      refreshAll();
+    })
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'vouchers'},p=>{const idx=vouchers.findIndex(x=>x.id===p.new.id);if(idx>=0){vouchers[idx]=mapV(p.new);refreshAll();}})
-    .on('postgres_changes',{event:'DELETE',schema:'public',table:'vouchers'},p=>{if(ownCheck(ownIds,p.old.id))return;const before=vouchers.length;vouchers=vouchers.filter(x=>x.id!==p.old.id);if(vouchers.length!==before)refreshAll();})
+    .on('postgres_changes',{event:'DELETE',schema:'public',table:'vouchers'},p=>{
+      // Own-delete guard: we already removed it locally
+      if(ownCheck(ownIds,p.old.id))return;
+      // Another device deleted it — remove from our local array too
+      const before=vouchers.length;
+      vouchers=vouchers.filter(x=>x.id!==p.old.id);
+      if(vouchers.length!==before)refreshAll();
+    })
     .on('postgres_changes',{event:'*',schema:'public',table:'meta'},p=>{const row=p.new||{};if(row.key==='bf_amt'){bfAmt=parseFloat(row.value)||0;renderBF();}if(row.key==='bf_side'){bfSide=row.value||'DR';renderBF();}if(row.key==='next_cv_no'&&parseInt(row.value)>nextVno.CR){nextVno.CR=parseInt(row.value);updateVnoDisplays();}if(row.key==='next_dv_no'&&parseInt(row.value)>nextVno.DR){nextVno.DR=parseInt(row.value);updateVnoDisplays();}})
     .subscribe(status=>{
       const dot=document.querySelector('.conn-dot'),lbl=document.getElementById('conn-label');
