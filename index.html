@@ -499,9 +499,9 @@ let submitting=false;
 // Value = timestamp so stale entries auto-expire after 10 seconds
 const ownIds=new Map();
 const ownAccIds=new Map();
-function ownMark(map,id){map.set(String(id),Date.now());}
+function ownMark(map,id){map.set(String(Number(id)),Date.now());}
 function ownCheck(map,id){
-  const k=String(id);
+  const k=String(Number(id));
   if(!map.has(k))return false;
   if(Date.now()-map.get(k)>10000){map.delete(k);return false;}
   map.delete(k);
@@ -903,8 +903,9 @@ async function postVoucher(type){
   try{
     const {data,error}=await sb.from('vouchers').insert({date,type,acc_id:acc.dbId,acc_name:acc.name,acc_no:accNo,vno,amt,narr}).select().single();
     if(error){toast('Error: '+error.message,false);beep('error');unlockBtn(btnId);return;}
-    const newVoucher={id:data.id,date,type,accId:accNo,accName:acc.name,accNo,vno,amt,narr};
-    ownMark(ownIds,data.id);  // mark as locally-owned so realtime skips it
+    // Mark BEFORE pushing locally — realtime can fire at any time after insert
+    ownMark(ownIds,data.id);
+    const newVoucher={id:Number(data.id),date,type,accId:Number(accNo),accName:acc.name,accNo:Number(accNo),vno,amt,narr};
     vouchers.push(newVoucher);
     nextVno[type]++;
     await sb.from('meta').upsert({key:type==='CR'?'next_cv_no':'next_dv_no',value:String(nextVno[type])});
@@ -1016,9 +1017,12 @@ function refreshAll(){
 
 async function delVoucher(id){
   if(!confirm('Delete this voucher?'))return;
-  ownMark(ownIds,id);  // mark as own delete so realtime echo is ignored
-  await sb.from('vouchers').delete().eq('id',id);
-  vouchers=vouchers.filter(v=>v.id!==id);
+  // Convert to number for consistent comparison (Supabase ids are bigint)
+  const numId=Number(id);
+  ownMark(ownIds,numId);  // mark BEFORE delete so realtime echo is ignored
+  await sb.from('vouchers').delete().eq('id',numId);
+  // Remove from local array — compare as numbers to avoid type mismatch
+  vouchers=vouchers.filter(v=>Number(v.id)!==numId);
   refreshAll();toast('Voucher deleted — all books updated.');
 }
 
@@ -1464,7 +1468,7 @@ async function init(){
     ]);
     if(ar.error)throw ar.error;
     accounts=(ar.data||[]).map(a=>({id:a.acc_no,no:a.acc_no,dbId:a.id,name:a.name,ref:a.ref||'',ob:parseFloat(a.ob)||0,obSide:a.ob_side||'DR',obDate:a.ob_date||''}));
-    vouchers=(vr.data||[]).map(v=>({id:v.id,date:v.date,type:v.type,accId:v.acc_no,accName:v.acc_name,accNo:v.acc_no,vno:v.vno,amt:parseFloat(v.amt),narr:v.narr||''}));
+    vouchers=(vr.data||[]).map(v=>({id:Number(v.id),date:v.date,type:v.type,accId:Number(v.acc_no),accName:v.acc_name,accNo:Number(v.acc_no),vno:v.vno,amt:parseFloat(v.amt),narr:v.narr||''}));
     const meta=mr.data||[];
     const nm=meta.find(m=>m.key==='next_acc_no');nextAccNo=nm?parseInt(nm.value):1001;
     if(accounts.length){const mx=Math.max(...accounts.map(a=>a.no));if(mx>=nextAccNo)nextAccNo=mx+1;}
@@ -1496,7 +1500,7 @@ function startRealtime(){
     realtimeChannel=null;
   }
   const mapAcc=a=>({id:a.acc_no,no:a.acc_no,dbId:a.id,name:a.name,ref:a.ref||'',ob:parseFloat(a.ob)||0,obSide:a.ob_side||'DR',obDate:a.ob_date||''});
-  const mapV=v=>({id:v.id,date:v.date,type:v.type,accId:v.acc_no,accName:v.acc_name,accNo:v.acc_no,vno:v.vno,amt:parseFloat(v.amt),narr:v.narr||''});
+  const mapV=v=>({id:Number(v.id),date:v.date,type:v.type,accId:Number(v.acc_no),accName:v.acc_name,accNo:Number(v.acc_no),vno:v.vno,amt:parseFloat(v.amt),narr:v.narr||''});
   realtimeChannel=sb.channel('khata-live')
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'accounts'},p=>{if(ownCheck(ownAccIds,p.new.id))return;if(!accounts.find(x=>x.no===p.new.acc_no)){accounts.push(mapAcc(p.new));populateSelects();refreshAll();}})
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'accounts'},p=>{
@@ -1505,13 +1509,14 @@ function startRealtime(){
     })
     .on('postgres_changes',{event:'DELETE',schema:'public',table:'accounts'},p=>{accounts=accounts.filter(x=>x.no!==p.old.acc_no);populateSelects();refreshAll();})
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'vouchers'},p=>{
-      // Layer 1: own-insert guard (we inserted this ourselves)
-      if(ownCheck(ownIds,p.new.id))return;
-      // Layer 2: id dedup (voucher already in local array)
-      if(vouchers.find(x=>x.id===p.new.id))return;
-      // Layer 3: content dedup (same vno+account+amount+date — catches any edge case)
-      if(vouchers.find(x=>x.vno===p.new.vno&&x.accId===p.new.acc_no&&x.amt===parseFloat(p.new.amt)&&x.date===p.new.date))return;
-      // Safe to add — this is a genuine insert from another device
+      const rid=Number(p.new.id);
+      // Layer 1: own-insert guard — we inserted this, skip realtime echo
+      if(ownCheck(ownIds,rid))return;
+      // Layer 2: id already in local array (any timing scenario)
+      if(vouchers.find(x=>Number(x.id)===rid))return;
+      // Layer 3: same content already exists (belt & suspenders)
+      if(vouchers.find(x=>x.vno===p.new.vno&&x.date===p.new.date&&Number(x.accId)===Number(p.new.acc_no)&&Math.abs(x.amt-parseFloat(p.new.amt))<0.001))return;
+      // Genuine insert from another device/tab — add it
       vouchers.push(mapV(p.new));
       const t=p.new.type;const m=p.new.vno.match(/\d+/);const n=m?parseInt(m[0]):0;
       if(n>=nextVno[t]){nextVno[t]=n+1;updateVnoDisplays();}
@@ -1519,11 +1524,12 @@ function startRealtime(){
     })
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'vouchers'},p=>{const idx=vouchers.findIndex(x=>x.id===p.new.id);if(idx>=0){vouchers[idx]=mapV(p.new);refreshAll();}})
     .on('postgres_changes',{event:'DELETE',schema:'public',table:'vouchers'},p=>{
-      // Own-delete guard: we already removed it locally
-      if(ownCheck(ownIds,p.old.id))return;
-      // Another device deleted it — remove from our local array too
+      const rid=Number(p.old.id);
+      // Own-delete guard: we already removed it locally before this event fired
+      if(ownCheck(ownIds,rid))return;
+      // Another device deleted — sync locally using Number() comparison
       const before=vouchers.length;
-      vouchers=vouchers.filter(x=>x.id!==p.old.id);
+      vouchers=vouchers.filter(x=>Number(x.id)!==rid);
       if(vouchers.length!==before)refreshAll();
     })
     .on('postgres_changes',{event:'*',schema:'public',table:'meta'},p=>{const row=p.new||{};if(row.key==='bf_amt'){bfAmt=parseFloat(row.value)||0;renderBF();}if(row.key==='bf_side'){bfSide=row.value||'DR';renderBF();}if(row.key==='next_cv_no'&&parseInt(row.value)>nextVno.CR){nextVno.CR=parseInt(row.value);updateVnoDisplays();}if(row.key==='next_dv_no'&&parseInt(row.value)>nextVno.DR){nextVno.DR=parseInt(row.value);updateVnoDisplays();}})
